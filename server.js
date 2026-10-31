@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const stream = require('stream');
+const dgram = require('dgram');
 const { execSync } = require('child_process');
 const { WebSocketServer } = require('ws');
 
@@ -158,10 +159,10 @@ function serveMedia(req, res, rawName) {
 const server = http.createServer((req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    if (url.pathname === '/' || url.pathname === '/stage') {
-      return serveStaticHtml(res, 'stage.html');
+    if (url.pathname === '/' || url.pathname === '/stage' || url.pathname === '/index.html') {
+      return serveStaticHtml(res, 'index.html');
     }
-    if (url.pathname === '/remote') {
+    if (url.pathname === '/remote' || url.pathname === '/remote.html') {
       return serveStaticHtml(res, 'remote.html');
     }
     if (url.pathname === '/api/config') {
@@ -235,6 +236,13 @@ wss.on('connection', (ws) => {
 
     if (data.type === 'hello') {
       ws.role = data.role === 'stage' ? 'stage' : 'remote';
+      const rawIp = ws._socket && ws._socket.remoteAddress ? ws._socket.remoteAddress : '';
+      const clientIp = rawIp.replace(/^.*:/, '') || 'unknown';
+      if (ws.role === 'stage') {
+        console.log(`\x1b[32m[SMARTBOARD CONNECTED]\x1b[0m Stage display active from ${clientIp}`);
+      } else {
+        console.log(`\x1b[36m[REMOTE CONNECTED]\x1b[0m Teleprompter connected from ${clientIp}`);
+      }
       syncBoardPresence();
       broadcastState();
       return;
@@ -316,35 +324,189 @@ setInterval(() => {
   }
 }, 5000);
 
-function detectLocalIPs() {
-  const ips = new Set();
+function runShellCmd(cmd) {
   try {
-    const nets = os.networkInterfaces();
-    for (const list of Object.values(nets)) {
-      for (const info of list || []) {
-        if (info.family === 'IPv4' && !info.internal) ips.add(info.address);
+    return execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 1500 }) || '';
+  } catch {
+    return '';
+  }
+}
+
+function getUdpLocalIp(dest, port = 53, timeoutMs = 250) {
+  return new Promise((resolve) => {
+    let resolved = false;
+    let s;
+    const finish = (ip) => {
+      if (resolved) return;
+      resolved = true;
+      try { if (s) s.close(); } catch {}
+      resolve(ip);
+    };
+    try {
+      s = dgram.createSocket('udp4');
+      const timer = setTimeout(() => finish(null), timeoutMs);
+      s.on('error', () => { clearTimeout(timer); finish(null); });
+      s.connect(port, dest, () => {
+        clearTimeout(timer);
+        try {
+          const addr = s.address().address;
+          if (addr && !addr.startsWith('127.')) finish(addr);
+          else finish(null);
+        } catch {
+          finish(null);
+        }
+      });
+    } catch {
+      finish(null);
+    }
+  });
+}
+
+function parseIfconfig(text) {
+  const results = [];
+  const blocks = text.split(/(?=^[a-zA-Z0-9_-]+[:\s])/m);
+  for (const block of blocks) {
+    const headerMatch = block.match(/^([a-zA-Z0-9_-]+)/);
+    if (!headerMatch) continue;
+    const iface = headerMatch[1];
+    if (iface.startsWith('lo')) continue;
+    const ipMatch = block.match(/inet\s+(?:addr:)?(\d+\.\d+\.\d+\.\d+)/);
+    if (ipMatch && !ipMatch[1].startsWith('127.')) {
+      results.push({ iface, ip: ipMatch[1] });
+    }
+  }
+  return results;
+}
+
+function parseIpAddr(text) {
+  const results = [];
+  const lines = text.split('\n');
+  let currentIface = '';
+  for (const line of lines) {
+    const ifaceMatch = line.match(/^\d+:\s+([a-zA-Z0-9_-]+):/);
+    if (ifaceMatch) currentIface = ifaceMatch[1];
+    const ipMatch = line.match(/inet\s+(\d+\.\d+\.\d+\.\d+)/);
+    if (ipMatch && currentIface && !currentIface.startsWith('lo') && !ipMatch[1].startsWith('127.')) {
+      results.push({ iface: currentIface, ip: ipMatch[1] });
+    }
+  }
+  return results;
+}
+
+function parseIpRoute(text) {
+  const results = [];
+  const lines = text.split('\n');
+  for (const line of lines) {
+    const defaultMatch = line.match(/default\s+via\s+(\d+\.\d+\.\d+\.\d+)\s+dev\s+([a-zA-Z0-9_-]+)/);
+    if (defaultMatch) {
+      results.push({ iface: defaultMatch[2], ip: defaultMatch[1], isGateway: true });
+    }
+    const srcMatch = line.match(/dev\s+([a-zA-Z0-9_-]+).+?src\s+(\d+\.\d+\.\d+\.\d+)/);
+    if (srcMatch && !srcMatch[1].startsWith('lo') && !srcMatch[2].startsWith('127.')) {
+      results.push({ iface: srcMatch[1], ip: srcMatch[2] });
+    }
+  }
+  return results;
+}
+
+async function detectNetworkInfo() {
+  const found = new Map();
+
+  function addTarget(ip, iface, forcedType) {
+    if (!ip || ip.startsWith('127.') || ip === '0.0.0.0') return;
+    const lowerIface = (iface || '').toLowerCase();
+    let type = forcedType;
+    if (!type) {
+      if (/ap|softap|swlan/i.test(lowerIface) || ip.startsWith('192.168.43.')) {
+        type = 'hotspot';
+      } else if (/wlan/i.test(lowerIface)) {
+        type = 'wifi';
+      } else if (/rndis|usb|bnep/i.test(lowerIface)) {
+        type = 'tether';
+      } else if (/rmnet|ccmni|pdp/i.test(lowerIface)) {
+        type = 'cellular';
+      } else {
+        type = 'other';
       }
     }
-  } catch {
-    // Android 14+ SELinux may block uv_interface_addresses; fallback to shell
-    try {
-      const out = execSync('ip -4 addr show 2>/dev/null || true', { encoding: 'utf8' });
-      const matches = out.match(/inet\s+(\d+\.\d+\.\d+\.\d+)/g) || [];
-      for (const m of matches) {
-        const ip = m.replace(/inet\s+/, '');
-        if (!ip.startsWith('127.')) ips.add(ip);
-      }
-    } catch {}
+    if (!found.has(ip) || (type === 'hotspot' && found.get(ip).type !== 'hotspot')) {
+      found.set(ip, { ip, iface: iface || 'unknown', type });
+    }
   }
-  return [...ips];
+
+  // Tier 1: os.networkInterfaces()
+  try {
+    const nets = os.networkInterfaces();
+    for (const [name, list] of Object.entries(nets)) {
+      for (const info of list || []) {
+        if (info.family === 'IPv4' && !info.internal) {
+          addTarget(info.address, name);
+        }
+      }
+    }
+  } catch {}
+
+  // Tier 2: ifconfig (works on Android 11-14 non-root via ioctl)
+  const ifconfigOut = runShellCmd('ifconfig 2>/dev/null || /system/bin/ifconfig 2>/dev/null');
+  if (ifconfigOut) {
+    for (const item of parseIfconfig(ifconfigOut)) {
+      addTarget(item.ip, item.iface);
+    }
+  }
+
+  // Tier 3: ip addr / route (works on older Android or rooted)
+  const ipAddrOut = runShellCmd('ip -4 addr show 2>/dev/null || /system/bin/ip -4 addr show 2>/dev/null');
+  if (ipAddrOut) {
+    for (const item of parseIpAddr(ipAddrOut)) {
+      addTarget(item.ip, item.iface);
+    }
+  }
+
+  const ipRouteOut = runShellCmd('ip -4 route show 2>/dev/null || /system/bin/ip -4 route show 2>/dev/null');
+  if (ipRouteOut) {
+    for (const item of parseIpRoute(ipRouteOut)) {
+      if (!item.isGateway) addTarget(item.ip, item.iface);
+    }
+  }
+
+  // Tier 4: Android getprop
+  const getpropWlan = runShellCmd('getprop dhcp.wlan0.ipaddress').trim();
+  if (getpropWlan) addTarget(getpropWlan, 'wlan0', 'wifi');
+  const getpropAp = runShellCmd('getprop dhcp.ap0.ipaddress').trim();
+  if (getpropAp) addTarget(getpropAp, 'ap0', 'hotspot');
+
+  // Tier 5: UDP route lookups (pure Node.js)
+  const [udpInternet, udpHotspot] = await Promise.all([
+    getUdpLocalIp('8.8.8.8'),
+    getUdpLocalIp('192.168.43.254')
+  ]);
+  if (udpInternet) addTarget(udpInternet, 'udp_route');
+  if (udpHotspot && udpHotspot.startsWith('192.168.43.')) addTarget(udpHotspot, 'ap0', 'hotspot');
+
+  const targets = Array.from(found.values());
+  const hotspotTarget = targets.find((t) => t.type === 'hotspot');
+  const wifiTarget = targets.find((t) => t.type === 'wifi') || targets.find((t) => t.type === 'other');
+
+  // Android standard Hotspot gateway IP is 192.168.43.1
+  const hotspotGatewayIp = hotspotTarget ? hotspotTarget.ip : '192.168.43.1';
+  const wifiIp = wifiTarget && wifiTarget.ip !== hotspotGatewayIp ? wifiTarget.ip : null;
+
+  return {
+    all: targets,
+    hotspotGatewayIp,
+    wifiIp,
+    hasDetectedHotspot: Boolean(hotspotTarget)
+  };
 }
 
 // Prevent unexpected exceptions from killing live show
 process.on('uncaughtException', (err) => console.error('[Uncaught]', err.message));
 process.on('unhandledRejection', (err) => console.error('[Unhandled]', err));
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log('\n=== HALLOWEEN STAGE SERVER READY ===');
+server.listen(PORT, '0.0.0.0', async () => {
+  console.log('\n====================================================');
+  console.log('            🎃 HALLOWEEN STAGE SERVER 🎃            ');
+  console.log('====================================================');
   const manifest = buildManifest();
   for (const s of manifest.scenes) {
     const tag = s.exists ? `\x1b[32m[OK ${(s.size / 1048576).toFixed(1)} MB]\x1b[0m` : '\x1b[31m[MISSING!]\x1b[0m';
@@ -357,15 +519,27 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`  ${tag} ${manifest.ambient.file} (Ambient Audio)`);
   }
 
-  const ips = detectLocalIPs();
-  console.log('\n1. Open on YOUR PHONE (Localhost unlocks Screen WakeLock):');
-  console.log(`   http://127.0.0.1:${PORT}/remote`);
-  console.log('\n2. Open on SMARTBOARD Browser:');
-  if (ips.length > 0) {
-    ips.forEach((ip) => console.log(`   http://${ip}:${PORT}/stage`));
+  const net = await detectNetworkInfo();
+
+  console.log('\n----------------------------------------------------');
+  console.log('1. ON THIS PHONE (Teleprompter & Show Controls):');
+  console.log(`   👉 \x1b[36mhttp://127.0.0.1:${PORT}/remote\x1b[0m`);
+  console.log('----------------------------------------------------');
+  console.log('2. ON SMARTBOARD / TV SCREEN (Type in TV Browser):');
+
+  if (net.hasDetectedHotspot) {
+    console.log(`   ⭐ \x1b[1;33mHOST GATEWAY IP (Hotspot Mode):\x1b[0m`);
+    console.log(`      👉 \x1b[1;32mhttp://${net.hotspotGatewayIp}:${PORT}/stage\x1b[0m`);
   } else {
-    console.log(`   http://<YOUR-HOTSPOT-GATEWAY-IP>:${PORT}/stage`);
-    console.log('   (Check Smartboard Wi-Fi details -> "Gateway/Router" for exact IP)');
+    console.log(`   ⭐ \x1b[1;33mHOST GATEWAY IP (Android Hotspot):\x1b[0m`);
+    console.log(`      👉 \x1b[1;32mhttp://${net.hotspotGatewayIp}:${PORT}/stage\x1b[0m`);
+    console.log(`      \x1b[90m(Connect Smartboard to phone Hotspot & type URL above)\x1b[0m`);
   }
-  console.log('====================================\n');
+
+  if (net.wifiIp) {
+    console.log(`\n   🌐 \x1b[1;36mLOCAL WI-FI (Shared Router Mode):\x1b[0m`);
+    console.log(`      👉 \x1b[1;32mhttp://${net.wifiIp}:${PORT}/stage\x1b[0m`);
+    console.log(`      \x1b[90m(If phone & Smartboard share the same Wi-Fi router)\x1b[0m`);
+  }
+  console.log('====================================================\n');
 });
