@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Stage Teleprompter</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body {
+      background: #000; color: #e7e5e4;
+      font-family: system-ui, -apple-system, sans-serif;
+      padding-top: 86px; padding-bottom: 94px;
+      overscroll-behavior: none;
+    }
+    header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 40;
+      background: rgba(10, 10, 10, 0.96);
+      border-bottom: 1px solid #292524;
+      padding: 10px 14px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .top-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .badge {
+      font-size: 12px; font-weight: 700; padding: 4px 8px;
+      border-radius: 6px; background: #292524; color: #a8a29e;
+    }
+    .badge.ok { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+    .badge.warn { background: #451a03; color: #fbbf24; border: 1px solid #92400e; }
+    .badge.err { background: #450a0a; color: #f87171; border: 1px solid #991b1b; }
+    #timerBtn {
+      font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 700;
+      padding: 4px 10px; border-radius: 6px; border: 1px solid #44403c;
+      background: #1c1917; color: #f5f5f4; cursor: pointer;
+    }
+    #timerBtn.warn { color: #fbbf24; border-color: #b45309; }
+    #timerBtn.over { color: #f87171; border-color: #dc2626; }
+    .sub-row {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 12px; color: #a8a29e;
+    }
+    .font-controls button {
+      background: #1c1917; color: #d6d3d1; border: 1px solid #44403c;
+      border-radius: 5px; padding: 2px 9px; font-size: 12px; font-weight: 700; margin-left: 4px;
+    }
+    main { padding: 14px; display: flex; flex-direction: column; gap: 18px; }
+    .intro-card {
+      padding: 14px; border-radius: 10px;
+      background: #0c0a09; border: 1px dashed #44403c;
+      color: #a8a29e; font-size: 15px; line-height: 1.5;
+    }
+    .scene-card {
+      border-radius: 12px; background: #0c0a09;
+      border: 2px solid #292524; padding: 14px;
+      transition: border-color 0.2s ease, background 0.2s ease;
+    }
+    .scene-card.active {
+      border-color: #f59e0b; background: #161109;
+    }
+    .cue-btn {
+      width: 100%; padding: 14px 16px; border-radius: 9px;
+      border: 1px solid #f59e0b; background: #271a05; color: #fbbf24;
+      font-size: 15px; font-weight: 700; text-align: left;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px; cursor: pointer;
+    }
+    .scene-card.active .cue-btn {
+      background: #f59e0b; color: #000;
+    }
+    .script-text {
+      color: #f5f5f4; line-height: 1.62;
+      white-space: pre-line; font-size: var(--script-size, 20px);
+    }
+    footer {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
+      background: rgba(10, 10, 10, 0.98); border-top: 1px solid #292524;
+      padding: 10px 12px; display: grid;
+      grid-template-columns: 1fr 1fr 1.3fr; gap: 8px;
+    }
+    .ctrl-btn {
+      padding: 14px 8px; border-radius: 10px; font-size: 13px; font-weight: 700;
+      border: 1px solid #44403c; background: #1c1917; color: #e7e5e4; cursor: pointer;
+    }
+    .ctrl-btn.active-blackout { background: #7f1d1d; border-color: #ef4444; color: #fff; }
+    .ctrl-btn.active-audio { background: #14532d; border-color: #22c55e; color: #dcfce7; }
+    .ctrl-btn.next-btn { background: #f59e0b; border-color: #f59e0b; color: #000; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="top-row">
+      <span id="boardBadge" class="badge err">SERVER OFFLINE</span>
+      <button id="timerBtn" type="button" title="Tap to Pause/Resume">00:00</button>
+    </div>
+    <div class="sub-row">
+      <span id="liveStatus">Now Showing: BLACKOUT</span>
+      <div class="font-controls">
+        <button id="resetBtn" type="button">RESET</button>
+        <button id="fontDown" type="button">A-</button>
+        <button id="fontUp" type="button">A+</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="scriptContainer"></main>
+
+  <footer>
+    <button id="blackoutBtn" class="ctrl-btn active-blackout" type="button">BLACKOUT ON</button>
+    <button id="audioBtn" class="ctrl-btn" type="button">AUDIO MUTED</button>
+    <button id="nextBtn" class="ctrl-btn next-btn" type="button">NEXT SCENE ▶</button>
+  </footer>
+
+  <script>
+    const boardBadge = document.getElementById('boardBadge');
+    const liveStatus = document.getElementById('liveStatus');
+    const scriptContainer = document.getElementById('scriptContainer');
+    const blackoutBtn = document.getElementById('blackoutBtn');
+    const audioBtn = document.getElementById('audioBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const timerBtn = document.getElementById('timerBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    let manifest = null;
+    let state = null;
+    let ws = null;
+    let wakeLock = null;
+
+    let fontSize = Number(localStorage.getItem('stageFontSize')) || 20;
+    document.documentElement.style.setProperty('--script-size', `${fontSize}px`);
+
+    let elapsedSec = 0;
+    let timerRunning = false;
+
+    setInterval(() => {
+      if (!timerRunning) return;
+      elapsedSec += 1;
+      renderTimer();
+    }, 1000);
+
+    function renderTimer() {
+      const m = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+      const s = String(elapsedSec % 60).padStart(2, '0');
+      timerBtn.textContent = `${m}:${s}`;
+      timerBtn.className = elapsedSec >= 270 ? 'over' : elapsedSec >= 180 ? 'warn' : '';
+    }
+
+    timerBtn.addEventListener('click', () => {
+      timerRunning = !timerRunning;
+      vibrate(20);
+    });
+
+    function vibrate(ms = 35) {
+      try { if (navigator.vibrate) navigator.vibrate(ms); } catch {}
+    }
+
+    async function keepPhoneAwake() {
+      try {
+        if (navigator.wakeLock && !wakeLock) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLock.addEventListener('release', () => { wakeLock = null; });
+        }
+      } catch {}
+    }
+    document.addEventListener('click', keepPhoneAwake, { passive: true });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') keepPhoneAwake();
+    });
+
+    document.getElementById('fontUp').addEventListener('click', () => {
+      fontSize = Math.min(32, fontSize + 2);
+      localStorage.setItem('stageFontSize', fontSize);
+      document.documentElement.style.setProperty('--script-size', `${fontSize}px`);
+    });
+
+    document.getElementById('fontDown').addEventListener('click', () => {
+      fontSize = Math.max(14, fontSize - 2);
+      localStorage.setItem('stageFontSize', fontSize);
+      document.documentElement.style.setProperty('--script-size', `${fontSize}px`);
+    });
+
+    function sendCmd(payload) {
+      vibrate(35);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(payload));
+      }
+    }
+
+    function cueScene(idx) {
+      if (elapsedSec === 0 && !timerRunning) timerRunning = true;
+      sendCmd({ type: 'cue_scene', index: idx });
+    }
+
+    blackoutBtn.addEventListener('click', () => sendCmd({ type: 'toggle_blackout' }));
+    audioBtn.addEventListener('click', () => sendCmd({ type: 'toggle_audio' }));
+
+    nextBtn.addEventListener('click', () => {
+      if (!manifest || !state) return;
+      const nextIdx = state.activeScene + 1 < manifest.scenes.length ? state.activeScene + 1 : 0;
+      cueScene(nextIdx);
+      const card = document.getElementById(`card_${nextIdx}`);
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+
+    resetBtn.addEventListener('click', () => {
+      timerRunning = false;
+      elapsedSec = 0;
+      renderTimer();
+      sendCmd({ type: 'reset_show' });
+    });
+
+    async function loadManifest() {
+      const res = await fetch('/api/config', { cache: 'no-store' });
+      manifest = await res.json();
+      scriptContainer.innerHTML = '';
+
+      if (manifest.introNote) {
+        const intro = document.createElement('div');
+        intro.className = 'intro-card';
+        intro.textContent = manifest.introNote;
+        scriptContainer.appendChild(intro);
+      }
+
+      manifest.scenes.forEach((s) => {
+        const card = document.createElement('div');
+        card.className = 'scene-card';
+        card.id = `card_${s.index}`;
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'cue-btn';
+        btn.id = `btn_${s.index}`;
+        btn.innerHTML = `<span>${s.title}</span><span class="cue-tag">${s.exists ? 'CUE ▶' : 'MISSING FILE'}</span>`;
+        btn.addEventListener('click', () => cueScene(s.index));
+
+        const p = document.createElement('div');
+        p.className = 'script-text';
+        p.textContent = s.script;
+
+        card.appendChild(btn);
+        card.appendChild(p);
+        scriptContainer.appendChild(card);
+      });
+
+      if (state) renderUI();
+    }
+
+    function renderUI() {
+      if (!state) return;
+
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        boardBadge.className = 'badge err';
+        boardBadge.textContent = 'RECONNECTING...';
+      } else if (!state.boardConnected) {
+        boardBadge.className = 'badge err';
+        boardBadge.textContent = 'NO SMARTBOARD';
+      } else if (state.preloadPercent < 100) {
+        boardBadge.className = 'badge warn';
+        boardBadge.textContent = `LOADING ${state.preloadPercent}%`;
+      } else if (!state.boardArmed) {
+        boardBadge.className = 'badge warn';
+        boardBadge.textContent = 'TAP BOARD TO ARM';
+      } else {
+        boardBadge.className = 'badge ok';
+        boardBadge.textContent = state.preloadStatus === 'fallback' ? 'ARMED (STREAM)' : 'STAGE ARMED';
+      }
+
+      if (state.boardWarning) {
+        liveStatus.textContent = `Warning: ${state.boardWarning}`;
+      } else if (state.blackout || state.activeScene < 0) {
+        liveStatus.textContent = 'Now Showing: BLACKOUT';
+      } else if (manifest && manifest.scenes[state.activeScene]) {
+        liveStatus.textContent = `Live: ${manifest.scenes[state.activeScene].title}`;
+      }
+
+      blackoutBtn.className = state.blackout ? 'ctrl-btn active-blackout' : 'ctrl-btn';
+      blackoutBtn.textContent = state.blackout ? 'BLACKOUT ON' : 'FADE TO BLACK';
+
+      audioBtn.className = state.audioPlaying && !state.blackout ? 'ctrl-btn active-audio' : 'ctrl-btn';
+      audioBtn.textContent = state.audioPlaying && !state.blackout ? 'AUDIO LIVE' : 'AUDIO MUTED';
+
+      if (manifest) {
+        manifest.scenes.forEach((s) => {
+          const card = document.getElementById(`card_${s.index}`);
+          const btn = document.getElementById(`btn_${s.index}`);
+          if (!card || !btn) return;
+          const isLive = !state.blackout && state.activeScene === s.index;
+          card.classList.toggle('active', isLive);
+          btn.querySelector('.cue-tag').textContent = !s.exists ? 'MISSING!' : isLive ? 'LIVE ON SCREEN' : 'CUE ▶';
+        });
+      }
+    }
+
+    function connectWS() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${location.host}`);
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'hello', role: 'remote' }));
+        renderUI();
+      };
+
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'state') {
+            state = msg.state;
+            renderUI();
+          }
+        } catch {}
+      };
+
+      ws.onclose = () => {
+        renderUI();
+        setTimeout(connectWS, 1000);
+      };
+      ws.onerror = () => ws.close();
+    }
+
+    setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, 5000);
+
+    loadManifest();
+    connectWS();
+  </script>
+</body>
+</html>
