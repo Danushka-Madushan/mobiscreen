@@ -327,18 +327,20 @@
       blackoutEl.style.transition = `opacity ${durationMs}ms ease-in-out`;
       blackoutEl.style.opacity = '0';
 
+      // CSS transition from Scene A into transition video A_B_T
       transDeck.style.transition = `opacity ${durationMs}ms ease-in-out`;
       transDeck.style.opacity = '1';
 
       activeDeck = nextIdx;
       currentRenderKey = transKey;
 
-      // Pause old deck and pre-load destination loop into it
+      // Pause old deck and pre-load destination loop underneath at full opacity
       setTimeout(() => {
         if (myToken !== transitionToken) return;
         prevDeck.pause();
         prevDeck.style.transition = 'none';
-        prevDeck.style.opacity = '0';
+        prevDeck.style.opacity = '1';
+        prevDeck.style.zIndex = '1';
         prevDeck.loop = true;
         prevDeck.dataset.isLoop = 'true';
         prevDeck.src = destUrl;
@@ -347,7 +349,7 @@
         prevDeck.load();
       }, durationMs + 60);
 
-      // Listen for near end of transition clip to execute seamless lookahead crossfade
+      // Play A_B_T completely through, then direct instantaneous cut to Scene B (NO CSS crossfade)
       let handedOff = false;
       const cleanupListeners = () => {
         transDeck.removeEventListener('timeupdate', onTimeUpdate);
@@ -360,27 +362,19 @@
         handedOff = true;
 
         const destDeck = prevDeck;
-        destDeck.style.zIndex = '3';
-        transDeck.style.zIndex = '2';
+        destDeck.style.zIndex = '2';
+        transDeck.style.zIndex = '1';
         try { destDeck.currentTime = 0; } catch {}
-        await destDeck.play().catch(() => {});
-        await waitFrameReady(destDeck);
-        if (myToken !== transitionToken) return;
-
-        destDeck.style.transition = `opacity ${durationMs}ms ease-in-out`;
+        destDeck.style.transition = 'none';
         destDeck.style.opacity = '1';
-        transDeck.style.transition = `opacity ${durationMs}ms ease-in-out`;
+        await destDeck.play().catch(() => {});
+
+        transDeck.style.transition = 'none';
         transDeck.style.opacity = '0';
+        transDeck.pause();
 
         activeDeck = decks.indexOf(destDeck);
         currentRenderKey = destKey;
-
-        setTimeout(() => {
-          if (myToken !== transitionToken) return;
-          transDeck.pause();
-          transDeck.style.transition = 'none';
-          transDeck.style.opacity = '0';
-        }, durationMs + 80);
 
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'scene_transition_done', index: targetIndex }));
@@ -393,7 +387,7 @@
           return;
         }
         const dur = transDeck.duration;
-        if (Number.isFinite(dur) && dur > 0.5 && transDeck.currentTime >= Math.max(0.2, dur - 0.75)) {
+        if (Number.isFinite(dur) && dur > 0.5 && transDeck.currentTime >= dur - 0.05) {
           triggerHandoff();
         }
       };
@@ -406,7 +400,7 @@
         if (!handedOff && myToken === transitionToken) {
           triggerHandoff();
         }
-      }, 7000);
+      }, 14000);
     }
 
     // Play fade_out.mp4 ONCE from Standby Loop, then transition to pure Blackout
@@ -463,16 +457,12 @@
         if (finished || myToken !== transitionToken) return;
         finished = true;
 
-        blackoutEl.style.transition = `opacity ${durationMs}ms ease-in-out`;
+        blackoutEl.style.transition = 'none';
         blackoutEl.style.opacity = '1';
-
-        setTimeout(() => {
-          if (myToken !== transitionToken) return;
-          fadeDeck.pause();
-          fadeDeck.style.transition = 'none';
-          fadeDeck.style.opacity = '0';
-          currentRenderKey = 'blackout';
-        }, durationMs + 80);
+        fadeDeck.pause();
+        fadeDeck.style.transition = 'none';
+        fadeDeck.style.opacity = '0';
+        currentRenderKey = 'blackout';
 
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'fade_out_done' }));
@@ -485,7 +475,7 @@
           return;
         }
         const dur = fadeDeck.duration;
-        if (Number.isFinite(dur) && dur > 0.5 && fadeDeck.currentTime >= Math.max(0.2, dur - 0.7)) {
+        if (Number.isFinite(dur) && dur > 0.5 && fadeDeck.currentTime >= dur - 0.05) {
           completeFadeOut();
         }
       };
@@ -498,10 +488,10 @@
         if (!finished && myToken === transitionToken) {
           completeFadeOut();
         }
-      }, 7000);
+      }, 14000);
     }
 
-    // Play fade_in.mp4 ONCE from Blackout, then smoothly transition into loop.mp4 (looping)
+    // Play fade_in.mp4 ONCE from Blackout, then direct cut into loop.mp4 (looping)
     async function playFadeInHome(durationMs = 800) {
       const inUrl = mediaUrls['extra_fadeIn'];
       const loopUrl = mediaUrls['extra_loop'];
@@ -537,10 +527,11 @@
       activeDeck = nextIdx;
       currentRenderKey = 'extra_fadeIn';
 
-      // Preload loop.mp4 on the other deck
+      // Preload loop.mp4 on the other deck underneath
       prevDeck.pause();
       prevDeck.style.transition = 'none';
-      prevDeck.style.opacity = '0';
+      prevDeck.style.opacity = '1';
+      prevDeck.style.zIndex = '1';
       prevDeck.loop = true;
       prevDeck.dataset.isLoop = 'true';
       prevDeck.src = loopUrl;
@@ -560,27 +551,19 @@
         handedOff = true;
 
         const destDeck = prevDeck;
-        destDeck.style.zIndex = '3';
-        inDeck.style.zIndex = '2';
+        destDeck.style.zIndex = '2';
+        inDeck.style.zIndex = '1';
         try { destDeck.currentTime = 0; } catch {}
-        await destDeck.play().catch(() => {});
-        await waitFrameReady(destDeck);
-        if (myToken !== transitionToken) return;
-
-        destDeck.style.transition = `opacity ${durationMs}ms ease-in-out`;
+        destDeck.style.transition = 'none';
         destDeck.style.opacity = '1';
-        inDeck.style.transition = `opacity ${durationMs}ms ease-in-out`;
+        await destDeck.play().catch(() => {});
+
+        inDeck.style.transition = 'none';
         inDeck.style.opacity = '0';
+        inDeck.pause();
 
         activeDeck = decks.indexOf(destDeck);
         currentRenderKey = 'extra_loop';
-
-        setTimeout(() => {
-          if (myToken !== transitionToken) return;
-          inDeck.pause();
-          inDeck.style.transition = 'none';
-          inDeck.style.opacity = '0';
-        }, durationMs + 80);
 
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'fade_in_done' }));
@@ -593,7 +576,7 @@
           return;
         }
         const dur = inDeck.duration;
-        if (Number.isFinite(dur) && dur > 0.5 && inDeck.currentTime >= Math.max(0.2, dur - 0.75)) {
+        if (Number.isFinite(dur) && dur > 0.5 && inDeck.currentTime >= dur - 0.05) {
           triggerHomeLoop();
         }
       };
@@ -606,7 +589,7 @@
         if (!handedOff && myToken === transitionToken) {
           triggerHomeLoop();
         }
-      }, 7000);
+      }, 14000);
     }
 
     function applyState(s) {
