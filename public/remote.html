@@ -467,7 +467,8 @@
     function syncPhoneAudio(s) {
       if (!ambientUrl || !s) return;
       const isPhoneOut = (s.audioOutput === 'phone' || !s.audioOutput);
-      const shouldPlay = isPhoneOut && s.audioPlaying && !s.blackout && (s.stageMode === 'scene' || s.stageMode === 'scene_transition');
+      const mode = s.stageMode || (s.blackout ? 'blackout' : s.activeScene >= 0 ? 'scene' : 'standby_loop');
+      const shouldPlay = isPhoneOut && s.audioPlaying && mode !== 'standby_loop' && mode !== 'transitioning_home';
       if (shouldPlay) {
         if (ambientEl.paused) ambientEl.play().catch(() => {});
         targetAudioVol = s.audioVolume ?? 0.2;
@@ -536,16 +537,17 @@
 
       // Configure audioOutputBtn and audioBtn
       const isScreenOut = state.audioOutput === 'screen';
+      const isAudioActive = state.audioPlaying && mode !== 'standby_loop' && mode !== 'transitioning_home';
       if (isScreenOut) {
         audioOutputBtn.className = 'badge audio-out-btn screen';
         audioOutputBtn.textContent = 'AUDIO: 📺 SCREEN';
-        audioBtn.className = state.audioPlaying && !state.blackout ? 'ctrl-btn active-audio' : 'ctrl-btn';
-        audioBtn.textContent = state.audioPlaying && !state.blackout ? '📺 TV LIVE' : '📺 TV MUTED';
+        audioBtn.className = isAudioActive ? 'ctrl-btn active-audio' : 'ctrl-btn';
+        audioBtn.textContent = isAudioActive ? '📺 TV LIVE' : '📺 TV MUTED';
       } else {
         audioOutputBtn.className = 'badge audio-out-btn phone';
         audioOutputBtn.textContent = 'AUDIO: 📱 PHONE';
-        audioBtn.className = state.audioPlaying && !state.blackout ? 'ctrl-btn active-audio' : 'ctrl-btn';
-        audioBtn.textContent = state.audioPlaying && !state.blackout ? '📱 PHONE LIVE' : '📱 PHONE MUTED';
+        audioBtn.className = isAudioActive ? 'ctrl-btn active-audio' : 'ctrl-btn';
+        audioBtn.textContent = isAudioActive ? '📱 PHONE LIVE' : '📱 PHONE MUTED';
       }
 
       // Configure fadeHomeBtn & nextBtn
