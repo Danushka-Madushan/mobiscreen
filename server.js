@@ -19,14 +19,14 @@ const SHOW_CONFIG = {
   intoBlackout: {
     title: 'Intro: Into Blackout',
     note: 'Told before Scene 1. Tap SCREEN GO BLACK to fade out the screen, then speak into the dark.',
-    script: `Have you ever stopped to ask yourself a very simple question about tonight?\n\nEvery other holiday humans invented is built around welcoming something in. We open front doors. We turn on bright lights. We gather under our real names.\n\nHalloween is the only night on the calendar built entirely out of defense mechanisms.\n\nHiding your face behind someone else's skin. Disguising yourself as a monster. Pretending to be dead. Nobody does that for fun... unless something has been hunting them in the dark for a very, very long time.\n\nTo understand why, we have to peel back the history.\n\nBuckle up. You are about to witness where this nightmare actually began.`
+    script: `ඔයාලට අද දවස ගැන අමුත්තක් දැනිල නැතිද..\n\nමනුස්සයො විසින් නිර්මාණය කරපු අනිත් හැම හොලිඩේ එකකදිම අපි මොනම හරි දෙයක් පිලිගන්නව.. ඒ දවස අපි අලෝකමත් කරන්න හදනව.. අපි අපිව අඳුන්වල දෙන්න හදනව..\n\nබට්, හැලෝවීන් ඉස් දි ඔන්ලි නයිට්.. අපි හැමදේම අනිත් පැත්තට කරන...\nඅපි වෙනත් මුහුණතකින් එලියට එනව... වෙනත් නමකින් හඳුන්වගන්නව.. අලෝකමත් රාත්‍රීන් අඳුරෙන් වහල දානව..\nමේ හැමදේම විනෝදෙට බිහිවුනා වෙන්න බැ.. අන්ලෙස්ස්.. ඒ දවස ඇතුලත අපිව අඳුරගන්නවට අපි හුඟක් අකමැතිනම් විතරක්...\n\nඉතින් මේ රාත්‍රිය ගැන දැනගන්න අපිට පොඩ්ඩක් අතීතයට යන්න වෙනව.. ටිකක් නෙමේ.. හුඟක් ඈත අතීතයට..\nසෝ බකල් අප් පීපල්.. යූ ආර් අබවුට් ටු විට්නස් හිස්ටරි...`
   },
   postBlackout: {
     title: 'Outro: Post Blackout',
     note: 'Told after Scene 10 in blackout. Speak lines below, cue Fade Home In, then deliver the final line.',
-    scriptPart1: `Even as centuries passed and cities filled with electric lights, the core ritual never died. Because deep down, the instinct survived... knowing that every thirty-first of October, whatever rules the dark outside still tries to catch us.\n\nBrothers and sisters...`,
+    scriptPart1: `අන්න ඒ විදිහට ඒ අතීත කතාව වර්තමානයටම ඇදිල ආව.. කැන්ඩ්ල්ස් ලයිට් බල්බ්ස් උනා.. ඒ උනාට ඒ දවස අපි අතරින් ගියේ නෑ.. මොකද අදටත් මේ 31 වෙනි රාත්‍රියට.. මලවුන්ගෙ ලෝකයට දොරවල් ඇරෙනව..\n\nමතකතියාගන්න.. අද දවස තියෙන්නෙ ඔයාට බේරිල ඉන්න...\n\nසෝ බ්‍රදර්ස් ඇන්ඩ් සිස්ටර්ස්..`,
     cueMarker: '-FadeIN-',
-    scriptPart2: `Welcome to Halloween.`
+    scriptPart2: `වෙල්කම් ටු හැලෝවීන්...`
   },
   extras: {
     loop: 'loop.mp4',
@@ -37,61 +37,61 @@ const SHOW_CONFIG = {
     {
       file: '01.mp4',
       title: 'Scene 1: Ancient Ireland',
-      script: `Two thousand years ago, in the freezing hills of ancient Ireland... this is where it started.`,
+      script: `මේ හැමදේම ඇරඹුනේ මීට අවුරුදු දෙදාහකට කලින් අයර්ලන්තයේ එක්තරා පෙදෙසක.. මිනිස්සු සාමාන්‍ය ජීවිත ගතකලා.. ඒත් එක රාත්‍රියක් තිබුන එයාල හැමදාම බයෙන් උන්න..`,
       transitionToNext: '01_02_T.mp4'
     },
     {
       file: '02.mp4',
       title: 'Scene 2: Samhain (Summer\'s End)',
-      script: `Back then, October thirty-first had another name: Samhain. Literally translated... Summer's End.`,
+      script: `ඒ කාලෙ අද වගේ කැලැන්ඩර්ස් තිබුනෙ නෑ.. ඒ වෙනුවට ඔක් 31 වෙනිදට එයාලගෙ ලඟ තිබුන වෙනම නමක්.. "සම්හෙයින්.." එහෙම නැත්නම් සමර්ස් එන්ඩ්...`,
       transitionToNext: '02_03_T.mp4'
     },
     {
       file: '03.mp4',
       title: 'Scene 3: The Dying Sun',
-      script: `It was the night the sun died. Frost rotted the crops in the dirt, and villagers slaughtered their own cattle in the dark because they knew winter starvation was waiting.`,
+      script: `ඒ දවස උදාවෙනකොට.. අහසෙන් ඉර හැංගෙන්න ගන්නව, පරිසරය සීතලට බරවෙනව... වගාවන් මියයන්න ගන්නව..`,
       transitionToNext: '03_04_T.mp4'
     },
     {
       file: '04.mp4',
       title: 'Scene 4: The Nameless Mist',
-      script: `That night, the barrier between the mortal realm and the Otherworld thinned into a freezing ground mist. And old folklore held one terrifying rule: after sundown, you never, ever called out someone's real name. Whatever was hunting in that fog couldn't see well... but once it heard a name, it could steal that voice to lure you into the trees when you were alone.`,
+      script: `එයාල විශ්වාසකලා මේ හැමදේම සිද්දවෙන්නෙ මනුශ්‍ය ලෝකයත් මලවුන්ගේ ලෝකයත් අතර තියෙන බැම්ම හීනවෙලා යන නිසා කියල.. ඉර බැහැල ගියාම, ඔයා තව දුරටත් තනියම නෙමේ කියල.. ඉර බැහැල ගියාම ඒ ගම් ඝන මීදුමෙන් වැහිල යනව, ශබ්ද වලට විතරයි දුර පෙනුනෙ.. එයාල විශ්වාස කලා ඒ අඳුරෙ තමන්ගෙ ඇත්ත නම් කිවුවොත්.. ඒ නොපෙනෙන අමනුශ්‍යයන් එයාලව හොයන් ඒවි කියල..`,
       transitionToNext: '04_05_T.mp4'
     },
     {
       file: '05.mp4',
       title: 'Scene 5: The First Costumes',
-      script: `To survive the night, families extinguished every hearth fire, leaving their cold cottages pitch-black. They smeared bone ash over their skin, wore stitched animal pelts, and altered how they walked. That was not a celebration. That was the birth of the very first Halloween costume.`,
+      script: `ඉතින් මේ රැය ගතකරන්න ඒ කාලෙ මිනිස්සු  අසාමාන්‍ය දේවල් කරන්න ගත්ත.. වෙනත් සතුන්ගෙ හම් ඇටසැකිලි අලු වලින් එයාල එයාලගෙම ඇඳුම් නිර්මාණය කලා.. මෙතන තිබුනෙ හරි සරල නීතියක්.. තමනුත් මලවුන්ගේ කොටසක් වගේ හිටියොත් කරදරයක් නොවේවි කියන එක.. මේ තමයි හැලෝවින් කොස්ටියුම්ස් වල මූලාරම්බය...`,
       transitionToNext: '05_06_T.mp4'
     },
     {
       file: '06.mp4',
       title: 'Scene 6: Acting Dead',
-      script: `They did it purely to survive until dawn. Their logic was cold and simple: if an entity steps out of the dark and looks into your eyes, you act as lifeless as a corpse so it walks right past you.`,
+      script: `මේ හැමදේම එයාල කලේ මේ 31 වෙනි රාත්‍රිය ගතකරල ඉවරකරගන්න..  ඉතින් එයාලට සිද්දවුනා ඒ රාත්‍රිය ඇතුලෙ මලවුන් එක්ක එකට වාසය කරන්න.`,
       transitionToNext: '06_07_T.mp4'
     },
     {
       file: '07.mp4',
       title: 'Scene 7: The Turnip Decoys',
-      script: `But they still had a nightmare: what if something followed your footprints all the way back to your doorstep? To keep those things away, they gouged hideous, screaming faces into raw turnip roots and set them outside. Decoy heads... carved to warn whatever lurked in the mist that death had already claimed this house.`,
+      script: `ඒත් මේ දේවල් එතනින් ඉවර උනේ නෑ.. මේ හැමදේම අස්සෙ ඒ මිනිස්සුන්ට තවත් එක ප්‍රශ්නයක් තිබුන.. මේ හැමදේම අස්සෙත් මලවුන් තමන්ව හොයාගෙන පස්සෙන් ඒවිද කියල.. ඒ කාලෙ අද වගේ පම්කින්ස් තිබුනෙ නෑ ඒ වෙනුවට ඒ කාලෙ තිබුන ටර්නිප් අල වලින් ඒ මනුස්සයො මලවුන්ගේ මූනු හදල ගෙවල් වල පේන්න තිබ්බ.. හදිස්සියෙවත් මලවුන් තමන්ව හොයාගෙන ආවොත් මේ ගෙදර මේ වෙනකොටත් මලවුන් අයිති කරන් ඉවරයි කියල පෙන්නන්නයි ඒ දේ සිද්දකලේ..`,
       transitionToNext: '07_08_T.mp4'
     },
     {
       file: '08.mp4',
       title: 'Scene 8: The Primal Ritual',
-      script: `Decade after decade, the fear never stopped. Centuries rolled by, the turnip turned into the Jack-o'-lantern, but the primal ritual never changed.`,
+      script: `වසර අවුරුදු ගානකට පස්සෙත් මේ බය මිනිස්සුන්ගෙන් ගියේ නෑ.. ශතවර්ශ ගානකට පස්සෙ ඒ ටර්නිප් අල කාලයේ ඇවෑමෙන් ජැකෝ ලැන්ටර්න්ස් බවට පත් වුනා..`,
       transitionToNext: '08_09_T.mp4'
     },
     {
       file: '09.mp4',
       title: 'Scene 9: Modern Evolution',
-      script: `The rotting skins they wore to stay invisible evolved into the modern costumes we wear today.`,
+      script: `මලවුන්ගෙන් බේරෙන්න හදාගතපු ඒ රූප මෝස්තර.. නවීකරනය උනා..`,
       transitionToNext: '09_10_T.mp4'
     },
     {
       file: '10.mp4',
       title: 'Scene 10: The Jack-o\'-lantern Icon',
-      script: `not only that.. the literal icon of the halloween became the jack o lantern..`,
+      script: `ඒ විතරක් නෙමේ, මලවුන් එක්ක ගතවුන ඒ රාත්‍රියත් කාලයත් එක්ක උත්සවයක් බවට පත්වුනා..`,
       transitionToNext: null
     }
   ]
@@ -149,7 +149,65 @@ function getFileSize(filePath) {
   }
 }
 
+function syncScriptFromMarkdown() {
+  const scriptPath = path.join(__dirname, 'script.md');
+  if (!fs.existsSync(scriptPath)) return;
+  try {
+    const content = fs.readFileSync(scriptPath, 'utf8');
+    const lines = content.split(/\r?\n/);
+    let section = 'intro';
+    let introLines = [];
+    let sceneLines = {};
+    let currentScene = 0;
+    let outroLines = [];
+
+    for (const line of lines) {
+      const m = line.match(/^(\d+)\.\s*(.*)/);
+      if (m) {
+        currentScene = parseInt(m[1], 10);
+        section = 'scene';
+        sceneLines[currentScene] = [m[2]];
+      } else if (section === 'intro') {
+        introLines.push(line);
+      } else if (section === 'scene') {
+        if (currentScene === 10 && line.trim() && !line.match(/^\d+\./)) {
+          section = 'outro';
+          outroLines.push(line);
+        } else if (line.trim()) {
+          sceneLines[currentScene].push(line);
+        }
+      } else if (section === 'outro') {
+        outroLines.push(line);
+      }
+    }
+
+    const introText = introLines.join('\n').trim();
+    if (introText) {
+      if (!SHOW_CONFIG.intoBlackout) SHOW_CONFIG.intoBlackout = {};
+      SHOW_CONFIG.intoBlackout.script = introText;
+    }
+
+    for (let i = 1; i <= 10; i++) {
+      if (sceneLines[i] && SHOW_CONFIG.scenes[i - 1]) {
+        SHOW_CONFIG.scenes[i - 1].script = sceneLines[i].join('\n').trim();
+      }
+    }
+
+    const nonBlankOutro = outroLines.map(l => l.trim()).filter(Boolean);
+    if (nonBlankOutro.length > 0) {
+      if (!SHOW_CONFIG.postBlackout) SHOW_CONFIG.postBlackout = {};
+      const part2 = nonBlankOutro.pop();
+      const part1 = nonBlankOutro.join('\n\n');
+      SHOW_CONFIG.postBlackout.scriptPart1 = part1;
+      SHOW_CONFIG.postBlackout.scriptPart2 = part2;
+    }
+  } catch (err) {
+    console.error('[Script Sync Error]', err.message);
+  }
+}
+
 function buildManifest() {
+  syncScriptFromMarkdown();
   const scenes = SHOW_CONFIG.scenes.map((s, idx) => {
     const safeName = path.basename(s.file);
     const fullPath = path.join(MEDIA_DIR, safeName);
