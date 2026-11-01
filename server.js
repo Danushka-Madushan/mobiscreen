@@ -409,7 +409,7 @@ wss.on('connection', (ws) => {
               state.seq += 1;
               broadcastState();
             }
-          }, 8500);
+          }, 15000);
         } else {
           state.stageMode = 'scene';
           state.activeScene = idx;
@@ -454,7 +454,7 @@ wss.on('connection', (ws) => {
             state.seq += 1;
             broadcastState();
           }
-        }, 8500);
+        }, 15000);
       } else {
         // Direct CSS fade to black (e.g. from Scene 10 or during any scene)
         state.stageMode = 'blackout';
@@ -491,7 +491,7 @@ wss.on('connection', (ws) => {
           state.seq += 1;
           broadcastState();
         }
-      }, 8500);
+      }, 15000);
       state.seq += 1;
       broadcastState();
       return;
