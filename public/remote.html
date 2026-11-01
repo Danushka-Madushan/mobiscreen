@@ -74,15 +74,20 @@
       position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
       background: rgba(10, 10, 10, 0.98); border-top: 1px solid #292524;
       padding: 10px 12px; display: grid;
-      grid-template-columns: 1fr 1fr 1.3fr; gap: 8px;
+      grid-template-columns: 1fr 1fr 1fr; gap: 8px;
+    }
+    footer.has-home {
+      grid-template-columns: 1fr 1fr 1fr 1.2fr;
     }
     .ctrl-btn {
-      padding: 14px 8px; border-radius: 10px; font-size: 13px; font-weight: 700;
+      padding: 14px 6px; border-radius: 10px; font-size: 12px; font-weight: 700;
       border: 1px solid #44403c; background: #1c1917; color: #e7e5e4; cursor: pointer;
+      text-align: center;
     }
     .ctrl-btn.active-blackout { background: #7f1d1d; border-color: #ef4444; color: #fff; }
     .ctrl-btn.active-audio { background: #14532d; border-color: #22c55e; color: #dcfce7; }
-    .ctrl-btn.next-btn { background: #f59e0b; border-color: #f59e0b; color: #000; font-size: 14px; }
+    .ctrl-btn.next-btn { background: #f59e0b; border-color: #f59e0b; color: #000; font-size: 13px; }
+    .ctrl-btn.home-btn { background: #0369a1; border-color: #0284c7; color: #fff; }
   </style>
 </head>
 <body>
@@ -92,7 +97,7 @@
       <button id="timerBtn" type="button" title="Tap to Pause/Resume">00:00</button>
     </div>
     <div class="sub-row">
-      <span id="liveStatus">Now Showing: BLACKOUT</span>
+      <span id="liveStatus">Now Showing: STANDBY LOOP</span>
       <div class="font-controls">
         <button id="resetBtn" type="button">RESET</button>
         <button id="fontDown" type="button">A-</button>
@@ -103,18 +108,21 @@
 
   <main id="scriptContainer"></main>
 
-  <footer>
-    <button id="blackoutBtn" class="ctrl-btn active-blackout" type="button">BLACKOUT ON</button>
+  <footer id="footerBar">
+    <button id="blackoutBtn" class="ctrl-btn active-blackout" type="button">SCREEN GO BLACK</button>
     <button id="audioBtn" class="ctrl-btn" type="button">AUDIO MUTED</button>
-    <button id="nextBtn" class="ctrl-btn next-btn" type="button">NEXT SCENE ▶</button>
+    <button id="fadeHomeBtn" class="ctrl-btn home-btn" type="button" style="display:none;">FADE HOME IN 🏠</button>
+    <button id="nextBtn" class="ctrl-btn next-btn" type="button">START SCENE 1 ▶</button>
   </footer>
 
   <script>
     const boardBadge = document.getElementById('boardBadge');
     const liveStatus = document.getElementById('liveStatus');
     const scriptContainer = document.getElementById('scriptContainer');
+    const footerBar = document.getElementById('footerBar');
     const blackoutBtn = document.getElementById('blackoutBtn');
     const audioBtn = document.getElementById('audioBtn');
+    const fadeHomeBtn = document.getElementById('fadeHomeBtn');
     const nextBtn = document.getElementById('nextBtn');
     const timerBtn = document.getElementById('timerBtn');
     const resetBtn = document.getElementById('resetBtn');
@@ -124,7 +132,10 @@
     let ws = null;
     let wakeLock = null;
 
-    let fontSize = Number(localStorage.getItem('stageFontSize')) || 20;
+    let fontSize = 20;
+    try {
+      fontSize = Number(localStorage.getItem('stageFontSize')) || 20;
+    } catch {}
     document.documentElement.style.setProperty('--script-size', `${fontSize}px`);
 
     let elapsedSec = 0;
@@ -140,7 +151,7 @@
       const m = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
       const s = String(elapsedSec % 60).padStart(2, '0');
       timerBtn.textContent = `${m}:${s}`;
-      timerBtn.className = elapsedSec >= 270 ? 'over' : elapsedSec >= 180 ? 'warn' : '';
+      timerBtn.className = elapsedSec >= 480 ? 'over' : elapsedSec >= 360 ? 'warn' : '';
     }
 
     timerBtn.addEventListener('click', () => {
@@ -167,13 +178,13 @@
 
     document.getElementById('fontUp').addEventListener('click', () => {
       fontSize = Math.min(32, fontSize + 2);
-      localStorage.setItem('stageFontSize', fontSize);
+      try { localStorage.setItem('stageFontSize', fontSize); } catch {}
       document.documentElement.style.setProperty('--script-size', `${fontSize}px`);
     });
 
     document.getElementById('fontDown').addEventListener('click', () => {
       fontSize = Math.max(14, fontSize - 2);
-      localStorage.setItem('stageFontSize', fontSize);
+      try { localStorage.setItem('stageFontSize', fontSize); } catch {}
       document.documentElement.style.setProperty('--script-size', `${fontSize}px`);
     });
 
@@ -189,15 +200,63 @@
       sendCmd({ type: 'cue_scene', index: idx });
     }
 
-    blackoutBtn.addEventListener('click', () => sendCmd({ type: 'toggle_blackout' }));
+    blackoutBtn.addEventListener('click', () => {
+      if (!state) return;
+      if (state.stageMode === 'standby_loop') {
+        sendCmd({ type: 'screen_go_black' });
+      } else {
+        sendCmd({ type: 'toggle_blackout' });
+      }
+    });
+
+    fadeHomeBtn.addEventListener('click', () => {
+      sendCmd({ type: 'fade_home_in' });
+    });
+
     audioBtn.addEventListener('click', () => sendCmd({ type: 'toggle_audio' }));
 
     nextBtn.addEventListener('click', () => {
       if (!manifest || !state) return;
-      const nextIdx = state.activeScene + 1 < manifest.scenes.length ? state.activeScene + 1 : 0;
-      cueScene(nextIdx);
-      const card = document.getElementById(`card_${nextIdx}`);
-      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      // Ignore rapid button clicks during transitions
+      if (state.stageMode === 'scene_transition' || state.stageMode === 'transitioning_black' || state.stageMode === 'transitioning_home') {
+        vibrate(15);
+        return;
+      }
+
+      // In standby loop: go black
+      if (state.stageMode === 'standby_loop') {
+        sendCmd({ type: 'screen_go_black' });
+        return;
+      }
+
+      // In blackout before Scene 1: cue Scene 1 (index 0)
+      if (state.activeScene < 0) {
+        cueScene(0);
+        const card = document.getElementById('card_0');
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+
+      // If at Scene 10 (last scene) and not in blackout: go black
+      if (state.activeScene === manifest.scenes.length - 1 && !state.blackout) {
+        sendCmd({ type: 'toggle_blackout' });
+        return;
+      }
+
+      // If in blackout after Scene 10: fade home in
+      if (state.activeScene === manifest.scenes.length - 1 && state.blackout) {
+        sendCmd({ type: 'fade_home_in' });
+        return;
+      }
+
+      // Normal progression to next scene
+      const nextIdx = state.activeScene + 1;
+      if (nextIdx < manifest.scenes.length) {
+        cueScene(nextIdx);
+        const card = document.getElementById(`card_${nextIdx}`);
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
     });
 
     resetBtn.addEventListener('click', () => {
@@ -263,33 +322,128 @@
         boardBadge.textContent = state.preloadStatus === 'fallback' ? 'ARMED (STREAM)' : 'STAGE ARMED';
       }
 
+      const mode = state.stageMode || (state.blackout ? 'blackout' : state.activeScene >= 0 ? 'scene' : 'standby_loop');
+
       if (state.boardWarning) {
         liveStatus.textContent = `Warning: ${state.boardWarning}`;
-      } else if (state.blackout || state.activeScene < 0) {
-        liveStatus.textContent = 'Now Showing: BLACKOUT';
+      } else if (mode === 'standby_loop') {
+        liveStatus.textContent = 'Now Showing: STANDBY LOOP';
+      } else if (mode === 'transitioning_black') {
+        liveStatus.textContent = 'Stage: Fading Out to Black...';
+      } else if (mode === 'transitioning_home') {
+        liveStatus.textContent = 'Stage: Fading Home In...';
+      } else if (mode === 'scene_transition') {
+        liveStatus.textContent = `Transitioning to Scene ${(state.targetScene || 0) + 1}...`;
+      } else if (mode === 'blackout' || state.blackout) {
+        if (state.activeScene === (manifest ? manifest.scenes.length - 1 : 9)) {
+          liveStatus.textContent = 'Show Ended: BLACKOUT';
+        } else {
+          liveStatus.textContent = 'Now Showing: BLACKOUT';
+        }
       } else if (manifest && manifest.scenes[state.activeScene]) {
         liveStatus.textContent = `Live: ${manifest.scenes[state.activeScene].title}`;
       }
 
-      blackoutBtn.className = state.blackout ? 'ctrl-btn active-blackout' : 'ctrl-btn';
-      blackoutBtn.textContent = state.blackout ? 'BLACKOUT ON' : 'FADE TO BLACK';
+      // Configure blackoutBtn
+      if (mode === 'standby_loop') {
+        blackoutBtn.className = 'ctrl-btn active-blackout';
+        blackoutBtn.textContent = 'SCREEN GO BLACK';
+      } else if (mode === 'transitioning_black') {
+        blackoutBtn.className = 'ctrl-btn active-blackout';
+        blackoutBtn.textContent = 'FADING OUT...';
+      } else if (mode === 'blackout' || state.blackout) {
+        blackoutBtn.className = 'ctrl-btn active-blackout';
+        blackoutBtn.textContent = 'BLACKOUT ON';
+      } else {
+        blackoutBtn.className = 'ctrl-btn';
+        blackoutBtn.textContent = 'FADE TO BLACK';
+      }
 
+      // Configure audioBtn
       audioBtn.className = state.audioPlaying && !state.blackout ? 'ctrl-btn active-audio' : 'ctrl-btn';
       audioBtn.textContent = state.audioPlaying && !state.blackout ? 'AUDIO LIVE' : 'AUDIO MUTED';
 
+      // Configure fadeHomeBtn & nextBtn
+      const isShowEnded = state.activeScene === (manifest ? manifest.scenes.length - 1 : 9);
+      if (mode === 'standby_loop') {
+        fadeHomeBtn.style.display = 'none';
+        footerBar.classList.remove('has-home');
+        nextBtn.className = 'ctrl-btn next-btn';
+        nextBtn.textContent = 'START SCENE 1 ▶';
+      } else if (mode === 'transitioning_black') {
+        fadeHomeBtn.style.display = 'none';
+        footerBar.classList.remove('has-home');
+        nextBtn.className = 'ctrl-btn';
+        nextBtn.textContent = 'FADING TO BLACK...';
+      } else if (mode === 'transitioning_home') {
+        fadeHomeBtn.style.display = 'none';
+        footerBar.classList.remove('has-home');
+        nextBtn.className = 'ctrl-btn';
+        nextBtn.textContent = 'FADING HOME...';
+      } else if (mode === 'scene_transition') {
+        fadeHomeBtn.style.display = 'none';
+        footerBar.classList.remove('has-home');
+        const targetNum = (state.targetScene || 0) + 1;
+        nextBtn.className = 'ctrl-btn';
+        nextBtn.textContent = `TRANSITIONING TO SCENE ${targetNum}...`;
+      } else if (mode === 'blackout' && state.activeScene < 0) {
+        fadeHomeBtn.style.display = 'block';
+        footerBar.classList.add('has-home');
+        nextBtn.className = 'ctrl-btn next-btn';
+        nextBtn.textContent = 'START SCENE 1 ▶';
+      } else if (isShowEnded) {
+        fadeHomeBtn.style.display = 'block';
+        footerBar.classList.add('has-home');
+        if (state.blackout || mode === 'blackout') {
+          nextBtn.className = 'ctrl-btn home-btn';
+          nextBtn.textContent = 'FADE HOME IN 🏠';
+        } else {
+          nextBtn.className = 'ctrl-btn active-blackout';
+          nextBtn.textContent = 'FINISH & BLACKOUT';
+        }
+      } else {
+        fadeHomeBtn.style.display = 'none';
+        footerBar.classList.remove('has-home');
+        const nextSceneNum = state.activeScene + 2;
+        nextBtn.className = 'ctrl-btn next-btn';
+        nextBtn.textContent = `NEXT: SCENE ${nextSceneNum} ▶`;
+      }
+
+      // Update scene cards
       if (manifest) {
         manifest.scenes.forEach((s) => {
           const card = document.getElementById(`card_${s.index}`);
           const btn = document.getElementById(`btn_${s.index}`);
           if (!card || !btn) return;
-          const isLive = !state.blackout && state.activeScene === s.index;
-          card.classList.toggle('active', isLive);
-          btn.querySelector('.cue-tag').textContent = !s.exists ? 'MISSING!' : isLive ? 'LIVE ON SCREEN' : 'CUE ▶';
+
+          const isLive = (!state.blackout && state.activeScene === s.index && mode !== 'scene_transition');
+          const isTransitionTarget = (mode === 'scene_transition' && state.targetScene === s.index);
+
+          card.classList.toggle('active', isLive || isTransitionTarget);
+          const tagSpan = btn.querySelector('.cue-tag');
+          if (tagSpan) {
+            if (!s.exists) tagSpan.textContent = 'MISSING!';
+            else if (isLive) tagSpan.textContent = 'LIVE ON SCREEN';
+            else if (isTransitionTarget) tagSpan.textContent = 'TRANSITIONING...';
+            else tagSpan.textContent = 'CUE ▶';
+          }
         });
       }
     }
 
+    let reconnectTimer = null;
+    function scheduleReconnect() {
+      if (reconnectTimer) return;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectWS();
+      }, 1000);
+    }
+
     function connectWS() {
+      if (ws) {
+        try { ws.onclose = null; ws.onerror = null; ws.close(); } catch {}
+      }
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(`${proto}//${location.host}`);
 
@@ -310,9 +464,12 @@
 
       ws.onclose = () => {
         renderUI();
-        setTimeout(connectWS, 1000);
+        scheduleReconnect();
       };
-      ws.onerror = () => ws.close();
+      ws.onerror = () => {
+        try { ws.close(); } catch {}
+        scheduleReconnect();
+      };
     }
 
     setInterval(() => {
