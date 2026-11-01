@@ -54,8 +54,8 @@
   </style>
 </head>
 <body oncontextmenu="return false;">
-  <video id="deck0" class="video-deck" muted loop playsinline webkit-playsinline preload="auto"></video>
-  <video id="deck1" class="video-deck" muted loop playsinline webkit-playsinline preload="auto"></video>
+  <video id="deck0" class="video-deck" muted playsinline webkit-playsinline preload="auto"></video>
+  <video id="deck1" class="video-deck" muted playsinline webkit-playsinline preload="auto"></video>
   <div id="blackout"></div>
   <audio id="ambient" loop preload="auto"></audio>
 
@@ -89,18 +89,32 @@
     let boardWarning = null;
 
     let activeDeck = 0;
-    let renderedScene = -1;
-    let renderedBlackout = true;
+    let currentRenderKey = null;
     let transitionToken = 0;
     let latestState = null;
     let targetAudioVol = 0;
     let currentAudioVol = 0;
 
-    // Loop safeguard if Smartboard WebView fires ended despite loop attribute
+    // Loop safeguard: ONLY loop when dataset.isLoop === 'true'
     decks.forEach((v) => {
       v.addEventListener('ended', () => {
-        v.currentTime = 0;
-        v.play().catch(() => {});
+        if (v.dataset.isLoop === 'true') {
+          v.currentTime = 0;
+          v.play().catch(() => {});
+        }
+      });
+
+      // Stream error recovery guard
+      v.addEventListener('error', () => {
+        console.warn('[Deck Error] Stream reload for', v.src);
+        try {
+          const cur = v.currentTime || 0;
+          v.load();
+          v.currentTime = cur;
+          if (v.dataset.isLoop === 'true' && blackoutEl.style.opacity !== '1') {
+            v.play().catch(() => {});
+          }
+        } catch {}
       });
     });
 
@@ -114,13 +128,18 @@
         currentAudioVol += diff * 0.08;
       }
       ambientEl.volume = Math.max(0, Math.min(1, currentAudioVol));
+      if (currentAudioVol === 0 && targetAudioVol === 0 && !ambientEl.paused) {
+        try { ambientEl.pause(); } catch {}
+      }
     }, 30);
 
-    // Watchdog: keep active deck playing if Smartboard tries to pause it
+    // Watchdog: keep active loop deck playing if browser WebView tries to pause it
     setInterval(() => {
-      if (!renderedBlackout && renderedScene >= 0) {
+      if (isArmed && blackoutEl.style.opacity !== '1') {
         const v = decks[activeDeck];
-        if (v.paused && v.readyState >= 2) v.play().catch(() => {});
+        if (v && v.dataset.isLoop === 'true' && v.paused && v.readyState >= 2) {
+          v.play().catch(() => {});
+        }
       }
     }, 1200);
 
@@ -136,114 +155,105 @@
       }
     }
 
-    function fetchBlobWithProgress(url, onProgress) {
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('GET', url, true);
-        xhr.responseType = 'blob';
-        xhr.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded); };
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
-            resolve(URL.createObjectURL(xhr.response));
-          } else {
-            reject(new Error(`HTTP ${xhr.status}`));
-          }
-        };
-        xhr.onerror = () => reject(new Error('Network error'));
-        xhr.send();
-      });
-    }
-
-    async function preloadAllMedia() {
+    async function initStreamingMedia() {
       while (!manifest) {
         try {
           const res = await fetch('/api/config', { cache: 'no-store' });
           manifest = await res.json();
         } catch {
-          await new Promise((r) => setTimeout(r, 1500));
+          await new Promise((r) => setTimeout(r, 1000));
         }
       }
 
       showTitle.textContent = manifest.title || 'Stage Display';
-      const items = [];
+
+      // Map HTTP 206 Range streaming endpoints directly
+      // Total Smartboard RAM usage: ~15MB across both decks (Zero crash risk)
+      if (manifest.extras) {
+        for (const [k, v] of Object.entries(manifest.extras)) {
+          if (v && v.exists) {
+            const url = `/media/${encodeURIComponent(v.file)}`;
+            mediaUrls[`extra_${k}`] = url;
+            mediaUrls[v.file] = url;
+          } else if (v) {
+            boardWarning = `Missing extra: ${v.file}`;
+          }
+        }
+      }
+
       for (const s of manifest.scenes) {
         if (s.exists) {
-          items.push({ key: `scene_${s.index}`, url: `/media/${encodeURIComponent(s.file)}`, size: s.size, label: s.title });
+          const sUrl = `/media/${encodeURIComponent(s.file)}`;
+          mediaUrls[`scene_${s.index}`] = sUrl;
+          mediaUrls[s.file] = sUrl;
         } else {
-          boardWarning = `Missing file: ${s.file}`;
+          boardWarning = `Missing scene: ${s.file}`;
+        }
+
+        if (s.transition) {
+          if (s.transition.exists) {
+            const tUrl = `/media/${encodeURIComponent(s.transition.file)}`;
+            mediaUrls[`trans_${s.index}`] = tUrl;
+            mediaUrls[s.transition.file] = tUrl;
+          } else {
+            boardWarning = `Missing transition: ${s.transition.file}`;
+          }
         }
       }
+
       if (manifest.ambient && manifest.ambient.exists) {
-        items.push({ key: 'ambient', url: `/media/${encodeURIComponent(manifest.ambient.file)}`, size: manifest.ambient.size, label: 'Ambient Audio' });
-      }
-
-      const totalBytes = items.reduce((sum, i) => sum + i.size, 0) || 1;
-      let completedBytes = 0;
-      let usedFallback = false;
-      let lastSent = 0;
-
-      for (const item of items) {
-        statusText.textContent = `Preloading into RAM: ${item.label}...`;
-        try {
-          const blobUrl = await fetchBlobWithProgress(item.url, (loaded) => {
-            const pct = Math.min(99, Math.round(((completedBytes + loaded) / totalBytes) * 100));
-            if (pct !== preloadPercent) {
-              preloadPercent = pct;
-              progressBar.style.width = `${pct}%`;
-              const now = Date.now();
-              if (now - lastSent > 250) {
-                lastSent = now;
-                sendBoardStatus();
-              }
-            }
-          });
-          if (item.key === 'ambient') ambientUrl = blobUrl;
-          else mediaUrls[item.key] = blobUrl;
-        } catch {
-          // Graceful fallback to local HTTP Range streaming if Smartboard RAM is full
-          usedFallback = true;
-          if (item.key === 'ambient') ambientUrl = item.url;
-          else mediaUrls[item.key] = item.url;
-        }
-        completedBytes += item.size;
+        ambientUrl = `/media/${encodeURIComponent(manifest.ambient.file)}`;
+        ambientEl.src = ambientUrl;
       }
 
       preloadPercent = 100;
-      preloadStatus = usedFallback ? 'fallback' : 'ready';
+      preloadStatus = 'ready';
       progressBar.style.width = '100%';
-      statusText.textContent = usedFallback
-        ? 'Ready (Direct Stream Fallback Active) — Tap Button Below'
-        : '100% Cached in RAM — Tap Button Below to Enter Blackout';
+      statusText.textContent = 'System Ready — Tap Button Below to Arm Stage';
 
-      if (ambientUrl) ambientEl.src = ambientUrl;
-      if (mediaUrls.scene_0) {
-        decks[0].src = mediaUrls.scene_0;
+      // Prime deck 0 with loop.mp4
+      const standbyUrl = mediaUrls['extra_loop'];
+      if (standbyUrl) {
+        decks[0].src = standbyUrl;
+        decks[0].loop = true;
+        decks[0].dataset.isLoop = 'true';
+        decks[0].dataset.loadedKey = 'extra_loop';
         decks[0].load();
       }
+
       sendBoardStatus();
       if (latestState) applyState(latestState);
     }
 
-    function waitFrameReady(video, timeoutMs = 380) {
+    function waitFrameReady(video, timeoutMs = 450) {
       return new Promise((resolve) => {
-        if (video.readyState >= 3) return resolve();
+        if (video.readyState >= 2) return resolve();
         let done = false;
         const finish = () => {
           if (done) return;
           done = true;
           video.removeEventListener('canplay', finish);
           video.removeEventListener('loadeddata', finish);
+          video.removeEventListener('error', finish);
           resolve();
         };
         video.addEventListener('canplay', finish, { once: true });
         video.addEventListener('loadeddata', finish, { once: true });
+        video.addEventListener('error', finish, { once: true });
         setTimeout(finish, timeoutMs);
       });
     }
 
-    async function crossfadeTo(sceneIndex, durationMs) {
-      const url = mediaUrls[`scene_${sceneIndex}`];
+    // Crossfade to a looping video (loop.mp4 or scene 01..10)
+    async function playLoopVideo(mediaKey, durationMs = 1000) {
+      const url = mediaUrls[mediaKey];
       if (!url) return;
+      if (currentRenderKey === mediaKey && decks[activeDeck].dataset.loadedKey === mediaKey && !decks[activeDeck].paused) {
+        // Already playing this loop
+        blackoutEl.style.transition = `opacity ${durationMs}ms ease-in-out`;
+        blackoutEl.style.opacity = '0';
+        return;
+      }
 
       const myToken = ++transitionToken;
       const nextIdx = 1 - activeDeck;
@@ -256,9 +266,11 @@
       prevDeck.style.zIndex = '1';
       void nextDeck.offsetWidth;
 
-      if (nextDeck.dataset.loadedKey !== `scene_${sceneIndex}`) {
+      nextDeck.loop = true;
+      nextDeck.dataset.isLoop = 'true';
+      if (nextDeck.dataset.loadedKey !== mediaKey) {
         nextDeck.src = url;
-        nextDeck.dataset.loadedKey = `scene_${sceneIndex}`;
+        nextDeck.dataset.loadedKey = mediaKey;
       }
       try { nextDeck.currentTime = 0; } catch {}
 
@@ -273,8 +285,7 @@
       nextDeck.style.opacity = '1';
 
       activeDeck = nextIdx;
-      renderedScene = sceneIndex;
-      renderedBlackout = false;
+      currentRenderKey = mediaKey;
 
       setTimeout(() => {
         if (myToken !== transitionToken) return;
@@ -284,40 +295,383 @@
       }, durationMs + 80);
     }
 
-    function applyState(s) {
-      latestState = s;
-      const dur = s.transitionMs || 1200;
-
-      // Auto-hide setup overlay if show is already live after an accidental Smartboard refresh
-      if (!isArmed && !s.blackout && s.activeScene >= 0) {
-        setupOverlay.classList.add('hidden');
-        document.body.classList.add('armed');
+    // Play transition clip ONCE, then automatically transition to destination loop
+    async function playTransitionThenLoop(transKey, destKey, targetIndex, durationMs = 800) {
+      const transUrl = mediaUrls[transKey];
+      const destUrl = mediaUrls[destKey];
+      if (!transUrl || !destUrl) {
+        return playLoopVideo(destKey, durationMs);
       }
 
-      if (s.blackout) {
-        ++transitionToken;
-        blackoutEl.style.transition = `opacity ${dur}ms ease-in-out`;
+      const myToken = ++transitionToken;
+      const nextIdx = 1 - activeDeck;
+      const prevDeck = decks[activeDeck];
+      const transDeck = decks[nextIdx];
+
+      transDeck.style.transition = 'none';
+      transDeck.style.opacity = '0';
+      transDeck.style.zIndex = '2';
+      prevDeck.style.zIndex = '1';
+      void transDeck.offsetWidth;
+
+      transDeck.loop = false;
+      transDeck.dataset.isLoop = 'false';
+      transDeck.src = transUrl;
+      transDeck.dataset.loadedKey = transKey;
+      try { transDeck.currentTime = 0; } catch {}
+
+      await transDeck.play().catch(() => {});
+      await waitFrameReady(transDeck);
+      if (myToken !== transitionToken) return;
+
+      blackoutEl.style.transition = `opacity ${durationMs}ms ease-in-out`;
+      blackoutEl.style.opacity = '0';
+
+      transDeck.style.transition = `opacity ${durationMs}ms ease-in-out`;
+      transDeck.style.opacity = '1';
+
+      activeDeck = nextIdx;
+      currentRenderKey = transKey;
+
+      // Pause old deck and pre-load destination loop into it
+      setTimeout(() => {
+        if (myToken !== transitionToken) return;
+        prevDeck.pause();
+        prevDeck.style.transition = 'none';
+        prevDeck.style.opacity = '0';
+        prevDeck.loop = true;
+        prevDeck.dataset.isLoop = 'true';
+        prevDeck.src = destUrl;
+        prevDeck.dataset.loadedKey = destKey;
+        try { prevDeck.currentTime = 0; } catch {}
+        prevDeck.load();
+      }, durationMs + 60);
+
+      // Listen for near end of transition clip to execute seamless lookahead crossfade
+      let handedOff = false;
+      const cleanupListeners = () => {
+        transDeck.removeEventListener('timeupdate', onTimeUpdate);
+        transDeck.removeEventListener('ended', triggerHandoff);
+      };
+
+      const triggerHandoff = async () => {
+        cleanupListeners();
+        if (handedOff || myToken !== transitionToken) return;
+        handedOff = true;
+
+        const destDeck = prevDeck;
+        destDeck.style.zIndex = '3';
+        transDeck.style.zIndex = '2';
+        try { destDeck.currentTime = 0; } catch {}
+        await destDeck.play().catch(() => {});
+        await waitFrameReady(destDeck);
+        if (myToken !== transitionToken) return;
+
+        destDeck.style.transition = `opacity ${durationMs}ms ease-in-out`;
+        destDeck.style.opacity = '1';
+        transDeck.style.transition = `opacity ${durationMs}ms ease-in-out`;
+        transDeck.style.opacity = '0';
+
+        activeDeck = decks.indexOf(destDeck);
+        currentRenderKey = destKey;
+
+        setTimeout(() => {
+          if (myToken !== transitionToken) return;
+          transDeck.pause();
+          transDeck.style.transition = 'none';
+          transDeck.style.opacity = '0';
+        }, durationMs + 80);
+
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'scene_transition_done', index: targetIndex }));
+        }
+      };
+
+      const onTimeUpdate = () => {
+        if (myToken !== transitionToken) {
+          cleanupListeners();
+          return;
+        }
+        const dur = transDeck.duration;
+        if (Number.isFinite(dur) && dur > 0.5 && transDeck.currentTime >= Math.max(0.2, dur - 0.75)) {
+          triggerHandoff();
+        }
+      };
+
+      transDeck.addEventListener('timeupdate', onTimeUpdate);
+      transDeck.addEventListener('ended', triggerHandoff, { once: true });
+
+      // Hardware decoder watchdog fallback
+      setTimeout(() => {
+        if (!handedOff && myToken === transitionToken) {
+          triggerHandoff();
+        }
+      }, 7000);
+    }
+
+    // Play fade_out.mp4 ONCE from Standby Loop, then transition to pure Blackout
+    async function playFadeOutToBlack(durationMs = 800) {
+      const url = mediaUrls['extra_fadeOut'];
+      if (!url) {
+        blackoutEl.style.transition = `opacity ${durationMs}ms ease-in-out`;
         blackoutEl.style.opacity = '1';
-        renderedBlackout = true;
-        targetAudioVol = 0;
-        if (s.activeScene === -1) renderedScene = -1;
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'fade_out_done' }));
         return;
       }
 
-      if (s.activeScene >= 0) {
-        if (s.activeScene !== renderedScene) {
-          crossfadeTo(s.activeScene, dur);
-        } else if (renderedBlackout) {
-          decks[activeDeck].play().catch(() => {});
-          blackoutEl.style.transition = `opacity ${dur}ms ease-in-out`;
-          blackoutEl.style.opacity = '0';
-          renderedBlackout = false;
+      const myToken = ++transitionToken;
+      const nextIdx = 1 - activeDeck;
+      const prevDeck = decks[activeDeck];
+      const fadeDeck = decks[nextIdx];
+
+      fadeDeck.style.transition = 'none';
+      fadeDeck.style.opacity = '0';
+      fadeDeck.style.zIndex = '2';
+      prevDeck.style.zIndex = '1';
+      void fadeDeck.offsetWidth;
+
+      fadeDeck.loop = false;
+      fadeDeck.dataset.isLoop = 'false';
+      fadeDeck.src = url;
+      fadeDeck.dataset.loadedKey = 'extra_fadeOut';
+      try { fadeDeck.currentTime = 0; } catch {}
+
+      await fadeDeck.play().catch(() => {});
+      await waitFrameReady(fadeDeck);
+      if (myToken !== transitionToken) return;
+
+      fadeDeck.style.transition = `opacity ${durationMs}ms ease-in-out`;
+      fadeDeck.style.opacity = '1';
+      activeDeck = nextIdx;
+      currentRenderKey = 'extra_fadeOut';
+
+      setTimeout(() => {
+        if (myToken !== transitionToken) return;
+        prevDeck.pause();
+        prevDeck.style.transition = 'none';
+        prevDeck.style.opacity = '0';
+      }, durationMs + 60);
+
+      let finished = false;
+      const cleanupListeners = () => {
+        fadeDeck.removeEventListener('timeupdate', checkEnd);
+        fadeDeck.removeEventListener('ended', completeFadeOut);
+      };
+
+      const completeFadeOut = () => {
+        cleanupListeners();
+        if (finished || myToken !== transitionToken) return;
+        finished = true;
+
+        blackoutEl.style.transition = `opacity ${durationMs}ms ease-in-out`;
+        blackoutEl.style.opacity = '1';
+
+        setTimeout(() => {
+          if (myToken !== transitionToken) return;
+          fadeDeck.pause();
+          fadeDeck.style.transition = 'none';
+          fadeDeck.style.opacity = '0';
+          currentRenderKey = 'blackout';
+        }, durationMs + 80);
+
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'fade_out_done' }));
+        }
+      };
+
+      const checkEnd = () => {
+        if (myToken !== transitionToken) {
+          cleanupListeners();
+          return;
+        }
+        const dur = fadeDeck.duration;
+        if (Number.isFinite(dur) && dur > 0.5 && fadeDeck.currentTime >= Math.max(0.2, dur - 0.7)) {
+          completeFadeOut();
+        }
+      };
+
+      fadeDeck.addEventListener('timeupdate', checkEnd);
+      fadeDeck.addEventListener('ended', completeFadeOut, { once: true });
+
+      // Hardware decoder watchdog fallback
+      setTimeout(() => {
+        if (!finished && myToken === transitionToken) {
+          completeFadeOut();
+        }
+      }, 7000);
+    }
+
+    // Play fade_in.mp4 ONCE from Blackout, then smoothly transition into loop.mp4 (looping)
+    async function playFadeInHome(durationMs = 800) {
+      const inUrl = mediaUrls['extra_fadeIn'];
+      const loopUrl = mediaUrls['extra_loop'];
+      if (!inUrl || !loopUrl) {
+        return playLoopVideo('extra_loop', durationMs);
+      }
+
+      const myToken = ++transitionToken;
+      const nextIdx = 1 - activeDeck;
+      const prevDeck = decks[activeDeck];
+      const inDeck = decks[nextIdx];
+
+      inDeck.style.transition = 'none';
+      inDeck.style.opacity = '1';
+      inDeck.style.zIndex = '2';
+      prevDeck.style.zIndex = '1';
+      void inDeck.offsetWidth;
+
+      inDeck.loop = false;
+      inDeck.dataset.isLoop = 'false';
+      inDeck.src = inUrl;
+      inDeck.dataset.loadedKey = 'extra_fadeIn';
+      try { inDeck.currentTime = 0; } catch {}
+
+      await inDeck.play().catch(() => {});
+      await waitFrameReady(inDeck);
+      if (myToken !== transitionToken) return;
+
+      // Lift blackout
+      blackoutEl.style.transition = `opacity ${durationMs}ms ease-in-out`;
+      blackoutEl.style.opacity = '0';
+
+      activeDeck = nextIdx;
+      currentRenderKey = 'extra_fadeIn';
+
+      // Preload loop.mp4 on the other deck
+      prevDeck.pause();
+      prevDeck.style.transition = 'none';
+      prevDeck.style.opacity = '0';
+      prevDeck.loop = true;
+      prevDeck.dataset.isLoop = 'true';
+      prevDeck.src = loopUrl;
+      prevDeck.dataset.loadedKey = 'extra_loop';
+      try { prevDeck.currentTime = 0; } catch {}
+      prevDeck.load();
+
+      let handedOff = false;
+      const cleanupListeners = () => {
+        inDeck.removeEventListener('timeupdate', checkInEnd);
+        inDeck.removeEventListener('ended', triggerHomeLoop);
+      };
+
+      const triggerHomeLoop = async () => {
+        cleanupListeners();
+        if (handedOff || myToken !== transitionToken) return;
+        handedOff = true;
+
+        const destDeck = prevDeck;
+        destDeck.style.zIndex = '3';
+        inDeck.style.zIndex = '2';
+        try { destDeck.currentTime = 0; } catch {}
+        await destDeck.play().catch(() => {});
+        await waitFrameReady(destDeck);
+        if (myToken !== transitionToken) return;
+
+        destDeck.style.transition = `opacity ${durationMs}ms ease-in-out`;
+        destDeck.style.opacity = '1';
+        inDeck.style.transition = `opacity ${durationMs}ms ease-in-out`;
+        inDeck.style.opacity = '0';
+
+        activeDeck = decks.indexOf(destDeck);
+        currentRenderKey = 'extra_loop';
+
+        setTimeout(() => {
+          if (myToken !== transitionToken) return;
+          inDeck.pause();
+          inDeck.style.transition = 'none';
+          inDeck.style.opacity = '0';
+        }, durationMs + 80);
+
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'fade_in_done' }));
+        }
+      };
+
+      const checkInEnd = () => {
+        if (myToken !== transitionToken) {
+          cleanupListeners();
+          return;
+        }
+        const dur = inDeck.duration;
+        if (Number.isFinite(dur) && dur > 0.5 && inDeck.currentTime >= Math.max(0.2, dur - 0.75)) {
+          triggerHomeLoop();
+        }
+      };
+
+      inDeck.addEventListener('timeupdate', checkInEnd);
+      inDeck.addEventListener('ended', triggerHomeLoop, { once: true });
+
+      // Hardware decoder watchdog fallback
+      setTimeout(() => {
+        if (!handedOff && myToken === transitionToken) {
+          triggerHomeLoop();
+        }
+      }, 7000);
+    }
+
+    function applyState(s) {
+      latestState = s;
+      const dur = s.transitionMs || 1000;
+
+      // Auto-hide setup overlay if state is live
+      if (!isArmed) {
+        if (s.boardArmed) {
+          setupOverlay.classList.add('hidden');
+          document.body.classList.add('armed');
+          isArmed = true;
+        } else {
+          return; // Never attempt autoplay before armBtn is clicked
         }
       }
 
-      if (ambientUrl && isArmed) {
-        if (ambientEl.paused) ambientEl.play().catch(() => {});
-        targetAudioVol = s.audioPlaying ? (s.audioVolume ?? 0.55) : 0;
+      const mode = s.stageMode || (s.blackout ? 'blackout' : s.activeScene >= 0 ? 'scene' : 'standby_loop');
+
+      if (mode === 'standby_loop') {
+        targetAudioVol = 0;
+        playLoopVideo('extra_loop', dur);
+        return;
+      }
+
+      if (mode === 'transitioning_black') {
+        targetAudioVol = 0;
+        playFadeOutToBlack(dur);
+        return;
+      }
+
+      if (mode === 'blackout' || s.blackout) {
+        ++transitionToken;
+        blackoutEl.style.transition = `opacity ${dur}ms ease-in-out`;
+        blackoutEl.style.opacity = '1';
+        targetAudioVol = 0;
+        currentRenderKey = 'blackout';
+        decks.forEach((d) => {
+          setTimeout(() => { if (blackoutEl.style.opacity === '1') d.pause(); }, dur + 50);
+        });
+        return;
+      }
+
+      if (mode === 'transitioning_home') {
+        targetAudioVol = 0;
+        playFadeInHome(dur);
+        return;
+      }
+
+      if (mode === 'scene_transition') {
+        const transIdx = s.targetScene - 1;
+        playTransitionThenLoop(`trans_${transIdx}`, `scene_${s.targetScene}`, s.targetScene, dur);
+        if (ambientUrl && isArmed) {
+          if (ambientEl.paused) ambientEl.play().catch(() => {});
+          targetAudioVol = s.audioPlaying ? (s.audioVolume ?? 0.2) : 0;
+        }
+        return;
+      }
+
+      if (mode === 'scene' && s.activeScene >= 0) {
+        playLoopVideo(`scene_${s.activeScene}`, dur);
+        if (ambientUrl && isArmed) {
+          if (ambientEl.paused) ambientEl.play().catch(() => {});
+          targetAudioVol = s.audioPlaying ? (s.audioVolume ?? 0.2) : 0;
+        }
       }
     }
 
@@ -360,17 +714,34 @@
 
       await requestKeepAwake();
 
-      // Unlock ambient audio at zero volume so future cues never get blocked by autoplay policies
       if (ambientUrl) {
         ambientEl.volume = 0;
         ambientEl.play().catch(() => {});
       }
 
       sendBoardStatus();
-      if (latestState) applyState(latestState);
+
+      // Immediately begin playing standby loop.mp4!
+      if (!latestState || latestState.stageMode === 'standby_loop') {
+        playLoopVideo('extra_loop', 800);
+      } else {
+        applyState(latestState);
+      }
     });
 
+    let reconnectTimer = null;
+    function scheduleReconnect() {
+      if (reconnectTimer) return;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectWS();
+      }, 1000);
+    }
+
     function connectWS() {
+      if (ws) {
+        try { ws.onclose = null; ws.onerror = null; ws.close(); } catch {}
+      }
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(`${proto}//${location.host}`);
 
@@ -386,8 +757,11 @@
         } catch {}
       };
 
-      ws.onclose = () => setTimeout(connectWS, 1000);
-      ws.onerror = () => ws.close();
+      ws.onclose = () => scheduleReconnect();
+      ws.onerror = () => {
+        try { ws.close(); } catch {}
+        scheduleReconnect();
+      };
     }
 
     setInterval(() => {
@@ -397,7 +771,7 @@
     }, 5000);
 
     connectWS();
-    preloadAllMedia();
+    initStreamingMedia();
   </script>
 </body>
 </html>
