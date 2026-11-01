@@ -56,6 +56,37 @@
     .scene-card.active {
       border-color: #f59e0b; background: #161109;
     }
+    .story-card {
+      border-radius: 12px; background: #0c0a09;
+      border: 2px solid #3b204e; padding: 14px;
+      transition: border-color 0.2s ease, background 0.2s ease;
+    }
+    .story-card.active {
+      border-color: #a855f7; background: #1a0b2e;
+    }
+    .story-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px; padding: 8px 12px; border-radius: 8px;
+      background: #201130; border: 1px solid #581c87;
+      font-size: 13px; font-weight: 700; color: #c084fc;
+      letter-spacing: 0.03em;
+    }
+    .story-card.active .story-header {
+      background: #581c87; color: #f3e8ff; border-color: #a855f7;
+    }
+    .story-note {
+      font-size: 13px; color: #a8a29e; font-style: italic;
+      margin-bottom: 12px; line-height: 1.4;
+    }
+    .inline-cue-btn {
+      width: 100%; margin: 14px 0; padding: 13px 18px;
+      border-radius: 9px; border: 2px solid #0284c7;
+      background: #0369a1; color: #fff;
+      font-size: 15px; font-weight: 700; cursor: pointer;
+      text-align: center;
+      transition: background 0.15s ease, transform 0.1s ease;
+    }
+    .inline-cue-btn:active { transform: scale(0.98); background: #0284c7; }
     .cue-btn {
       width: 100%; padding: 14px 16px; border-radius: 9px;
       border: 1px solid #f59e0b; background: #271a05; color: #fbbf24;
@@ -204,6 +235,8 @@
       if (!state) return;
       if (state.stageMode === 'standby_loop') {
         sendCmd({ type: 'screen_go_black' });
+        const intoCard = document.getElementById('card_into_blackout');
+        if (intoCard) intoCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
       } else {
         sendCmd({ type: 'toggle_blackout' });
       }
@@ -227,6 +260,8 @@
       // In standby loop: go black
       if (state.stageMode === 'standby_loop') {
         sendCmd({ type: 'screen_go_black' });
+        const intoCard = document.getElementById('card_into_blackout');
+        if (intoCard) intoCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
 
@@ -241,6 +276,8 @@
       // If at Scene 10 (last scene) and not in blackout: go black
       if (state.activeScene === manifest.scenes.length - 1 && !state.blackout) {
         sendCmd({ type: 'toggle_blackout' });
+        const postCard = document.getElementById('card_post_blackout');
+        if (postCard) postCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
 
@@ -264,6 +301,7 @@
       elapsedSec = 0;
       renderTimer();
       sendCmd({ type: 'reset_show' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 
     async function loadManifest() {
@@ -276,6 +314,32 @@
         intro.className = 'intro-card';
         intro.textContent = manifest.introNote;
         scriptContainer.appendChild(intro);
+      }
+
+      if (manifest.intoBlackout) {
+        const intoData = typeof manifest.intoBlackout === 'object' ? manifest.intoBlackout : { script: manifest.intoBlackout };
+        const intoCard = document.createElement('div');
+        intoCard.className = 'story-card';
+        intoCard.id = 'card_into_blackout';
+
+        const header = document.createElement('div');
+        header.className = 'story-header';
+        header.innerHTML = `<span>📖 ${intoData.title || 'INTRO: INTO BLACKOUT'}</span><span class="cue-tag">PRE-SHOW</span>`;
+        intoCard.appendChild(header);
+
+        if (intoData.note) {
+          const note = document.createElement('div');
+          note.className = 'story-note';
+          note.textContent = intoData.note;
+          intoCard.appendChild(note);
+        }
+
+        const p = document.createElement('div');
+        p.className = 'script-text';
+        p.textContent = intoData.script || '';
+        intoCard.appendChild(p);
+
+        scriptContainer.appendChild(intoCard);
       }
 
       manifest.scenes.forEach((s) => {
@@ -298,6 +362,48 @@
         card.appendChild(p);
         scriptContainer.appendChild(card);
       });
+
+      if (manifest.postBlackout) {
+        const postData = typeof manifest.postBlackout === 'object' ? manifest.postBlackout : { scriptPart1: manifest.postBlackout };
+        const postCard = document.createElement('div');
+        postCard.className = 'story-card';
+        postCard.id = 'card_post_blackout';
+
+        const header = document.createElement('div');
+        header.className = 'story-header';
+        header.innerHTML = `<span>📖 ${postData.title || 'OUTRO: POST BLACKOUT'}</span><span class="cue-tag">FINALE</span>`;
+        postCard.appendChild(header);
+
+        if (postData.note) {
+          const note = document.createElement('div');
+          note.className = 'story-note';
+          note.textContent = postData.note;
+          postCard.appendChild(note);
+        }
+
+        const p1 = document.createElement('div');
+        p1.className = 'script-text';
+        p1.textContent = postData.scriptPart1 || postData.script || '';
+        postCard.appendChild(p1);
+
+        if (postData.scriptPart2) {
+          const cueBtn = document.createElement('button');
+          cueBtn.type = 'button';
+          cueBtn.className = 'inline-cue-btn';
+          cueBtn.textContent = 'FADE HOME IN 🏠';
+          cueBtn.addEventListener('click', () => sendCmd({ type: 'fade_home_in' }));
+          postCard.appendChild(cueBtn);
+
+          const p2 = document.createElement('div');
+          p2.className = 'script-text';
+          p2.style.fontWeight = '700';
+          p2.style.color = '#f59e0b';
+          p2.textContent = postData.scriptPart2;
+          postCard.appendChild(p2);
+        }
+
+        scriptContainer.appendChild(postCard);
+      }
 
       if (state) renderUI();
     }
@@ -428,6 +534,18 @@
             else tagSpan.textContent = 'CUE ▶';
           }
         });
+      }
+
+      const intoCard = document.getElementById('card_into_blackout');
+      if (intoCard) {
+        const isIntoActive = (mode === 'blackout' && state.activeScene < 0) || (mode === 'transitioning_black');
+        intoCard.classList.toggle('active', isIntoActive);
+      }
+
+      const postCard = document.getElementById('card_post_blackout');
+      if (postCard) {
+        const isPostActive = isShowEnded && (state.blackout || mode === 'blackout' || mode === 'transitioning_home');
+        postCard.classList.toggle('active', isPostActive);
       }
     }
 

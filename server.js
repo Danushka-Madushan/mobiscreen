@@ -15,7 +15,19 @@ const SHOW_CONFIG = {
   transitionMs: 1000,
   ambientAudio: 'ambient.mp3', // In ./media/
   ambientVolume: 0.2,
-  introNote: 'Stage is in STANDBY LOOP. When ready to start, tap SCREEN GO BLACK to fade out. Take a slow breath, start speaking, then cue Scene 1.',
+  introNote: 'Stage is in STANDBY LOOP. When ready to start, tap SCREEN GO BLACK to fade out to blackout, read the Intro story, then cue Scene 1.',
+  intoBlackout: {
+    title: 'Intro: Into Blackout',
+    note: 'Told before Scene 1. Tap SCREEN GO BLACK to fade out the screen, then speak into the dark.',
+    script: `Have you ever stopped to ask yourself a very simple question about tonight?\n\nEvery other holiday humans invented is built around welcoming something in. We open front doors. We turn on bright lights. We gather under our real names.\n\nHalloween is the only night on the calendar built entirely out of defense mechanisms.\n\nHiding your face behind someone else's skin. Disguising yourself as a monster. Pretending to be dead. Nobody does that for fun... unless something has been hunting them in the dark for a very, very long time.\n\nTo understand why, we have to peel back the history.\n\nBuckle up. You are about to witness where this nightmare actually began.`
+  },
+  postBlackout: {
+    title: 'Outro: Post Blackout',
+    note: 'Told after Scene 10 in blackout. Speak lines below, cue Fade Home In, then deliver the final line.',
+    scriptPart1: `Even as centuries passed and cities filled with electric lights, the core ritual never died. Because deep down, the instinct survived... knowing that every thirty-first of October, whatever rules the dark outside still tries to catch us.\n\nBrothers and sisters...`,
+    cueMarker: '-FadeIN-',
+    scriptPart2: `Welcome to Halloween.`
+  },
   extras: {
     loop: 'loop.mp4',
     fadeOut: 'fade_out.mp4',
@@ -24,62 +36,62 @@ const SHOW_CONFIG = {
   scenes: [
     {
       file: '01.mp4',
-      title: 'Scene 1: Samhain Bonfires',
-      script: `Two thousand years ago, long before plastic masks and candy wrappers, the ancient Celts marked October thirty-first as Samhain—the night summer died and the dark half of the year began.\n\nThey believed that on this single night, the boundary between the living world and the world of the dead dissolved into mist.`,
+      title: 'Scene 1: Ancient Ireland',
+      script: `Two thousand years ago, in the freezing hills of ancient Ireland... this is where it started.`,
       transitionToNext: '01_02_T.mp4'
     },
     {
       file: '02.mp4',
-      title: 'Scene 2: Spirits in the Mist',
-      script: `Druids built towering sacred bonfires on hilltops to push back the creeping dark. Villagers extinguished their hearth fires and gathered in the smoke, wearing animal pelts and ash so wandering spirits would mistake them for one of their own.`,
+      title: 'Scene 2: Samhain (Summer\'s End)',
+      script: `Back then, October thirty-first had another name: Samhain. Literally translated... Summer's End.`,
       transitionToNext: '02_03_T.mp4'
     },
     {
       file: '03.mp4',
-      title: 'Scene 3: Carved Turnip Lanterns',
-      script: `Before pumpkins ever crossed the Atlantic, Irish folklore spoke of Stingy Jack—a trickster barred from both heaven and hell, doomed to roam the dark with a single burning coal inside a hollowed-out turnip.\n\nFamilies carved grotesque faces into turnips and set them on windowsills to ward him away.`,
+      title: 'Scene 3: The Dying Sun',
+      script: `It was the night the sun died. Frost rotted the crops in the dirt, and villagers slaughtered their own cattle in the dark because they knew winter starvation was waiting.`,
       transitionToNext: '03_04_T.mp4'
     },
     {
       file: '04.mp4',
-      title: 'Scene 4: The Guisers & Mummers',
-      script: `In the medieval shadows, young villagers took to the dark lanes in disguise. Disguised as spirits, they went door to door performing songs and verses in exchange for food and ale—promising fortune to generous hearths and misfortune to the greedy.`,
+      title: 'Scene 4: The Nameless Mist',
+      script: `That night, the barrier between the mortal realm and the Otherworld thinned into a freezing ground mist. And old folklore held one terrifying rule: after sundown, you never, ever called out someone's real name. Whatever was hunting in that fog couldn't see well... but once it heard a name, it could steal that voice to lure you into the trees when you were alone.`,
       transitionToNext: '04_05_T.mp4'
     },
     {
       file: '05.mp4',
-      title: 'Scene 5: Soul Cakes & The Dead',
-      script: `With the rise of All Hallows' Eve, Christian traditions intertwined with ancient lore. Bakers baked spiced soul cakes marked with crosses. For every sweet cake eaten, a prayer was whispered to release a trapped soul from the fires of purgatory.`,
+      title: 'Scene 5: The First Costumes',
+      script: `To survive the night, families extinguished every hearth fire, leaving their cold cottages pitch-black. They smeared bone ash over their skin, wore stitched animal pelts, and altered how they walked. That was not a celebration. That was the birth of the very first Halloween costume.`,
       transitionToNext: '05_06_T.mp4'
     },
     {
       file: '06.mp4',
-      title: 'Scene 6: The Witching Hour',
-      script: `Midnight approaches. In ancient villages, mirrors were covered with black cloth and knives turned blade-downward. Folk believed that gazing into water at the stroke of midnight would reveal a future spouse—or a shroud of death.`,
+      title: 'Scene 6: Acting Dead',
+      script: `They did it purely to survive until dawn. Their logic was cold and simple: if an entity steps out of the dark and looks into your eyes, you act as lifeless as a corpse so it walks right past you.`,
       transitionToNext: '06_07_T.mp4'
     },
     {
       file: '07.mp4',
-      title: 'Scene 7: Crossing the Atlantic',
-      script: `When waves of Irish and Scottish immigrants crossed the Atlantic in the nineteenth century, their ancient lore crossed with them. In the New World, they encountered native American pumpkins—larger, softer, and glowing like celestial lanterns in the autumn dusk.`,
+      title: 'Scene 7: The Turnip Decoys',
+      script: `But they still had a nightmare: what if something followed your footprints all the way back to your doorstep? To keep those things away, they gouged hideous, screaming faces into raw turnip roots and set them outside. Decoy heads... carved to warn whatever lurked in the mist that death had already claimed this house.`,
       transitionToNext: '07_08_T.mp4'
     },
     {
       file: '08.mp4',
-      title: 'Scene 8: The Golden Harvest',
-      script: `Across the prairie and woodlands, harvest festivals gave birth to the modern Jack-o'-lantern. Carved with glowing triangular eyes and jagged grins, they lit every doorstep from Boston to the frontier.`,
+      title: 'Scene 8: The Primal Ritual',
+      script: `Decade after decade, the fear never stopped. Centuries rolled by, the turnip turned into the Jack-o'-lantern, but the primal ritual never changed.`,
       transitionToNext: '08_09_T.mp4'
     },
     {
       file: '09.mp4',
-      title: 'Scene 9: The Modern Masquerade',
-      script: `By the twentieth century, trick-or-treating became a communal celebration. Millions of children donned costumes of ghouls, heroes, and wanderers, stepping into the night to tame the darkness with laughter and sweet treats.`,
+      title: 'Scene 9: Modern Evolution',
+      script: `The rotting skins they wore to stay invisible evolved into the modern costumes we wear today.`,
       transitionToNext: '09_10_T.mp4'
     },
     {
       file: '10.mp4',
-      title: 'Scene 10: All Hallows Eve (Finale)',
-      script: `Centuries have passed, continents have shifted, but the bonfire still smolders within us all. Tonight, when the autumn wind stirs the dry leaves and lights flicker on the porch, remember why we wear disguises...\n\nJust in case something in the dark is still looking back.`,
+      title: 'Scene 10: The Jack-o\'-lantern Icon',
+      script: `not only that.. the literal icon of the halloween became the jack o lantern..`,
       transitionToNext: null
     }
   ]
@@ -191,6 +203,8 @@ function buildManifest() {
     title: SHOW_CONFIG.title,
     transitionMs: SHOW_CONFIG.transitionMs,
     introNote: SHOW_CONFIG.introNote,
+    intoBlackout: SHOW_CONFIG.intoBlackout,
+    postBlackout: SHOW_CONFIG.postBlackout,
     scenes,
     extras,
     ambient
