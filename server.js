@@ -124,6 +124,7 @@ const state = {
   audioPlaying: false,
   audioVolume: SHOW_CONFIG.ambientVolume,
   audioInitialized: false,
+  audioOutput: 'phone', // 'phone' (default, Bluetooth speaker) | 'screen' (Smartboard TV)
   seq: 0,
   boardConnected: false,
   boardArmed: false,
@@ -548,6 +549,21 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (data.type === 'set_audio_output') {
+      const target = (data.output || data.destination) === 'screen' ? 'screen' : 'phone';
+      state.audioOutput = target;
+      state.seq += 1;
+      broadcastState();
+      return;
+    }
+
+    if (data.type === 'toggle_audio_output') {
+      state.audioOutput = state.audioOutput === 'screen' ? 'phone' : 'screen';
+      state.seq += 1;
+      broadcastState();
+      return;
+    }
+
     if (data.type === 'reset_show') {
       clearSafetyTimer();
       state.stageMode = 'standby_loop';
@@ -557,6 +573,7 @@ wss.on('connection', (ws) => {
       state.blackout = false;
       state.audioPlaying = false;
       state.audioInitialized = false;
+      state.audioOutput = 'phone';
       state.seq += 1;
       broadcastState();
     }

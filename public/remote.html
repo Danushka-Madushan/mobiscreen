@@ -27,6 +27,17 @@
     .badge.ok { background: #052e16; color: #4ade80; border: 1px solid #166534; }
     .badge.warn { background: #451a03; color: #fbbf24; border: 1px solid #92400e; }
     .badge.err { background: #450a0a; color: #f87171; border: 1px solid #991b1b; }
+    .audio-out-btn {
+      cursor: pointer; border: 1px solid #44403c; background: #1c1917;
+      font-size: 11px; padding: 4px 8px; border-radius: 6px; font-weight: 700;
+      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+    .audio-out-btn.phone {
+      color: #fbbf24; border-color: #b45309; background: #261605;
+    }
+    .audio-out-btn.screen {
+      color: #38bdf8; border-color: #0284c7; background: #082f49;
+    }
     #timerBtn {
       font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 700;
       padding: 4px 10px; border-radius: 6px; border: 1px solid #44403c;
@@ -122,9 +133,11 @@
   </style>
 </head>
 <body>
+  <audio id="ambientAudio" loop preload="auto"></audio>
   <header>
     <div class="top-row">
       <span id="boardBadge" class="badge err">SERVER OFFLINE</span>
+      <button id="audioOutputBtn" class="badge audio-out-btn phone" type="button" title="Audio Destination: Tap to Toggle">AUDIO: 📱 PHONE</button>
       <button id="timerBtn" type="button" title="Tap to Pause/Resume">00:00</button>
     </div>
     <div class="sub-row">
@@ -157,11 +170,49 @@
     const nextBtn = document.getElementById('nextBtn');
     const timerBtn = document.getElementById('timerBtn');
     const resetBtn = document.getElementById('resetBtn');
+    const audioOutputBtn = document.getElementById('audioOutputBtn');
+    const ambientEl = document.getElementById('ambientAudio');
 
     let manifest = null;
     let state = null;
     let ws = null;
     let wakeLock = null;
+
+    let ambientUrl = null;
+    let targetAudioVol = 0;
+    let currentAudioVol = 0;
+    let audioPrimed = false;
+
+    // Smooth ambient volume interpolator (60fps) on phone
+    setInterval(() => {
+      if (!ambientUrl) return;
+      const diff = targetAudioVol - currentAudioVol;
+      if (Math.abs(diff) < 0.005) {
+        currentAudioVol = targetAudioVol;
+      } else {
+        currentAudioVol += diff * 0.08;
+      }
+      ambientEl.volume = Math.max(0, Math.min(1, currentAudioVol));
+      if (currentAudioVol === 0 && targetAudioVol === 0 && !ambientEl.paused) {
+        try { ambientEl.pause(); } catch {}
+      }
+    }, 30);
+
+    function primeAudio() {
+      if (audioPrimed || !ambientEl) return;
+      audioPrimed = true;
+      try {
+        ambientEl.volume = 0;
+        const p = ambientEl.play();
+        if (p && p.then) {
+          p.then(() => {
+            if (targetAudioVol === 0) ambientEl.pause();
+          }).catch(() => { audioPrimed = false; });
+        }
+      } catch { audioPrimed = false; }
+    }
+    document.addEventListener('click', primeAudio, { passive: true });
+    document.addEventListener('touchstart', primeAudio, { passive: true });
 
     let fontSize = 20;
     try {
@@ -247,6 +298,7 @@
     });
 
     audioBtn.addEventListener('click', () => sendCmd({ type: 'toggle_audio' }));
+    audioOutputBtn.addEventListener('click', () => sendCmd({ type: 'toggle_audio_output' }));
 
     nextBtn.addEventListener('click', () => {
       if (!manifest || !state) return;
@@ -307,6 +359,10 @@
     async function loadManifest() {
       const res = await fetch('/api/config', { cache: 'no-store' });
       manifest = await res.json();
+      if (manifest.ambient && manifest.ambient.exists) {
+        ambientUrl = `/media/${encodeURIComponent(manifest.ambient.file)}`;
+        ambientEl.src = ambientUrl;
+      }
       scriptContainer.innerHTML = '';
 
       if (manifest.introNote) {
@@ -408,8 +464,21 @@
       if (state) renderUI();
     }
 
+    function syncPhoneAudio(s) {
+      if (!ambientUrl || !s) return;
+      const isPhoneOut = (s.audioOutput === 'phone' || !s.audioOutput);
+      const shouldPlay = isPhoneOut && s.audioPlaying && !s.blackout && (s.stageMode === 'scene' || s.stageMode === 'scene_transition');
+      if (shouldPlay) {
+        if (ambientEl.paused) ambientEl.play().catch(() => {});
+        targetAudioVol = s.audioVolume ?? 0.2;
+      } else {
+        targetAudioVol = 0;
+      }
+    }
+
     function renderUI() {
       if (!state) return;
+      syncPhoneAudio(state);
 
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         boardBadge.className = 'badge err';
@@ -465,9 +534,19 @@
         blackoutBtn.textContent = 'FADE TO BLACK';
       }
 
-      // Configure audioBtn
-      audioBtn.className = state.audioPlaying && !state.blackout ? 'ctrl-btn active-audio' : 'ctrl-btn';
-      audioBtn.textContent = state.audioPlaying && !state.blackout ? 'AUDIO LIVE' : 'AUDIO MUTED';
+      // Configure audioOutputBtn and audioBtn
+      const isScreenOut = state.audioOutput === 'screen';
+      if (isScreenOut) {
+        audioOutputBtn.className = 'badge audio-out-btn screen';
+        audioOutputBtn.textContent = 'AUDIO: 📺 SCREEN';
+        audioBtn.className = state.audioPlaying && !state.blackout ? 'ctrl-btn active-audio' : 'ctrl-btn';
+        audioBtn.textContent = state.audioPlaying && !state.blackout ? '📺 TV LIVE' : '📺 TV MUTED';
+      } else {
+        audioOutputBtn.className = 'badge audio-out-btn phone';
+        audioOutputBtn.textContent = 'AUDIO: 📱 PHONE';
+        audioBtn.className = state.audioPlaying && !state.blackout ? 'ctrl-btn active-audio' : 'ctrl-btn';
+        audioBtn.textContent = state.audioPlaying && !state.blackout ? '📱 PHONE LIVE' : '📱 PHONE MUTED';
+      }
 
       // Configure fadeHomeBtn & nextBtn
       const isShowEnded = state.activeScene === (manifest ? manifest.scenes.length - 1 : 9);

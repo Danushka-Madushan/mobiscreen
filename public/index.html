@@ -592,6 +592,18 @@
       }, 14000);
     }
 
+    function syncAudio(s) {
+      if (!ambientUrl || !isArmed) return;
+      const isMyOutput = (s.audioOutput === 'screen' || s.audioOutput === 'stage');
+      const shouldPlay = isMyOutput && s.audioPlaying && !s.blackout && (s.stageMode === 'scene' || s.stageMode === 'scene_transition');
+      if (shouldPlay) {
+        if (ambientEl.paused) ambientEl.play().catch(() => {});
+        targetAudioVol = s.audioVolume ?? 0.2;
+      } else {
+        targetAudioVol = 0;
+      }
+    }
+
     function applyState(s) {
       latestState = s;
       const dur = s.transitionMs || 1000;
@@ -607,16 +619,16 @@
         }
       }
 
+      syncAudio(s);
+
       const mode = s.stageMode || (s.blackout ? 'blackout' : s.activeScene >= 0 ? 'scene' : 'standby_loop');
 
       if (mode === 'standby_loop') {
-        targetAudioVol = 0;
         playLoopVideo('extra_loop', dur);
         return;
       }
 
       if (mode === 'transitioning_black') {
-        targetAudioVol = 0;
         playFadeOutToBlack(dur);
         return;
       }
@@ -625,7 +637,6 @@
         ++transitionToken;
         blackoutEl.style.transition = `opacity ${dur}ms ease-in-out`;
         blackoutEl.style.opacity = '1';
-        targetAudioVol = 0;
         currentRenderKey = 'blackout';
         decks.forEach((d) => {
           setTimeout(() => { if (blackoutEl.style.opacity === '1') d.pause(); }, dur + 50);
@@ -634,7 +645,6 @@
       }
 
       if (mode === 'transitioning_home') {
-        targetAudioVol = 0;
         playFadeInHome(dur);
         return;
       }
@@ -642,19 +652,11 @@
       if (mode === 'scene_transition') {
         const transIdx = s.targetScene - 1;
         playTransitionThenLoop(`trans_${transIdx}`, `scene_${s.targetScene}`, s.targetScene, dur);
-        if (ambientUrl && isArmed) {
-          if (ambientEl.paused) ambientEl.play().catch(() => {});
-          targetAudioVol = s.audioPlaying ? (s.audioVolume ?? 0.2) : 0;
-        }
         return;
       }
 
       if (mode === 'scene' && s.activeScene >= 0) {
         playLoopVideo(`scene_${s.activeScene}`, dur);
-        if (ambientUrl && isArmed) {
-          if (ambientEl.paused) ambientEl.play().catch(() => {});
-          targetAudioVol = s.audioPlaying ? (s.audioVolume ?? 0.2) : 0;
-        }
       }
     }
 
