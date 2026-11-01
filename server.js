@@ -456,6 +456,8 @@ wss.on('connection', (ws) => {
 
     if (data.type === 'screen_go_black') {
       clearSafetyTimer();
+      state.audioPlaying = true;
+      state.audioInitialized = true;
       if (state.stageMode === 'standby_loop') {
         state.stageMode = 'transitioning_black';
         state.blackout = false; // fade_out.mp4 starts playing
@@ -496,6 +498,7 @@ wss.on('connection', (ws) => {
       clearSafetyTimer();
       state.stageMode = 'transitioning_home';
       state.blackout = false; // fade_in.mp4 starts playing
+      state.audioPlaying = false; // Smooth fade out when returning home
       transitionSafetyTimer = setTimeout(() => {
         if (state.stageMode === 'transitioning_home') {
           state.stageMode = 'standby_loop';
@@ -503,6 +506,7 @@ wss.on('connection', (ws) => {
           state.activeScene = -1;
           state.targetScene = -1;
           state.transitionFile = null;
+          state.audioPlaying = false;
           state.seq += 1;
           broadcastState();
         }
@@ -519,6 +523,7 @@ wss.on('connection', (ws) => {
       state.activeScene = -1;
       state.targetScene = -1;
       state.transitionFile = null;
+      state.audioPlaying = false;
       state.seq += 1;
       broadcastState();
       return;
@@ -529,6 +534,19 @@ wss.on('connection', (ws) => {
       if (state.stageMode === 'standby_loop') {
         state.stageMode = 'transitioning_black';
         state.blackout = false;
+        state.audioPlaying = true;
+        state.audioInitialized = true;
+        transitionSafetyTimer = setTimeout(() => {
+          if (state.stageMode === 'transitioning_black') {
+            state.stageMode = 'blackout';
+            state.blackout = true;
+            state.activeScene = -1;
+            state.targetScene = -1;
+            state.transitionFile = null;
+            state.seq += 1;
+            broadcastState();
+          }
+        }, 15000);
       } else if (state.blackout) {
         state.blackout = false;
         state.stageMode = state.activeScene >= 0 ? 'scene' : 'standby_loop';
