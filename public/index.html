@@ -595,7 +595,8 @@
     function syncAudio(s) {
       if (!ambientUrl || !isArmed) return;
       const isMyOutput = (s.audioOutput === 'screen' || s.audioOutput === 'stage');
-      const shouldPlay = isMyOutput && s.audioPlaying && !s.blackout && (s.stageMode === 'scene' || s.stageMode === 'scene_transition');
+      const mode = s.stageMode || (s.blackout ? 'blackout' : s.activeScene >= 0 ? 'scene' : 'standby_loop');
+      const shouldPlay = isMyOutput && s.audioPlaying && mode !== 'standby_loop' && mode !== 'transitioning_home';
       if (shouldPlay) {
         if (ambientEl.paused) ambientEl.play().catch(() => {});
         targetAudioVol = s.audioVolume ?? 0.2;
